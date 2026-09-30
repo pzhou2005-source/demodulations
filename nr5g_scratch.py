@@ -157,17 +157,73 @@ plt.tight_layout(); plt.show()
 
 # %% 12. VSA 89600 simulation & comparison
 from vsa_89600 import simulate_vsa_result
-from compare import compare_results
+from compare import compare_results, correlate_results, plot_correlation
 
 vsa_result = simulate_vsa_result(time_signal, cfg)
 print(f"[VSA sim] EVM RMS: {vsa_result.evm_rms:.3f}%, Peak: {vsa_result.evm_peak:.3f}%")
 
-# %% 13. Side-by-side comparison
-plt.switch_backend("Agg")  # compare_results saves to file
+# %% 13. Correlate Python vs VSA 89600
+corr = correlate_results(result, vsa_result, cfg)
+
+print(f"Symbol offset:      {corr.sample_offset}")
+print(f"Phase offset:       {np.degrees(corr.phase_offset_rad):.2f}°")
+print(f"Amplitude ratio:    {corr.amplitude_ratio:.4f}")
+print(f"XCorr peak:         {corr.correlation_peak:.6f}")
+print(f"Symbol correlation: {corr.symbol_correlation:.6f}")
+print(f"EVM of difference:  {corr.evm_of_difference:.3f}%")
+
+# %% 14. Correlation plots — constellation overlay & error scatter
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+ax = axes[0]
+ax.scatter(corr.aligned_py_symbols.real, corr.aligned_py_symbols.imag,
+           s=1, alpha=0.3, c="steelblue", label="Python")
+ax.scatter(corr.aligned_vsa_symbols.real, corr.aligned_vsa_symbols.imag,
+           s=1, alpha=0.3, c="darkorange", label="VSA (aligned)")
+ax.set_title(f"Constellation Overlay — ρ={corr.symbol_correlation:.4f}")
+ax.set_xlabel("I"); ax.set_ylabel("Q")
+ax.set_aspect("equal"); ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
+
+ax = axes[1]
+err = corr.aligned_vsa_symbols - corr.aligned_py_symbols
+ax.scatter(err.real, err.imag, s=1, alpha=0.3, c="red")
+ax.set_title(f"Symbol Error — EVM={corr.evm_of_difference:.3f}%")
+ax.set_xlabel("ΔI"); ax.set_ylabel("ΔQ")
+ax.set_aspect("equal"); ax.grid(True, alpha=0.3)
+
+ax = axes[2]
+n_show = min(200, len(corr.aligned_py_symbols))
+ax.plot(np.abs(corr.aligned_py_symbols[:n_show]), label="Python", alpha=0.7)
+ax.plot(np.abs(corr.aligned_vsa_symbols[:n_show]), label="VSA", alpha=0.7)
+ax.set_title("Symbol Magnitude (first 200)")
+ax.set_xlabel("Symbol Index"); ax.set_ylabel("|symbol|")
+ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+plt.tight_layout(); plt.show()
+
+# %% 15. Per-OFDM-symbol and per-subcarrier correlation
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+ax = axes[0]
+ax.bar(range(len(corr.per_symbol_corr)), corr.per_symbol_corr, color="steelblue")
+ax.axhline(corr.symbol_correlation, color="red", linestyle="--",
+           label=f"Overall ρ={corr.symbol_correlation:.4f}")
+ax.set_title("Correlation per OFDM Symbol")
+ax.set_xlabel("OFDM Symbol Index"); ax.set_ylabel("|ρ|")
+ax.set_ylim(0, 1.05); ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+
+ax = axes[1]
+ax.plot(corr.per_subcarrier_corr, linewidth=0.8, color="steelblue")
+ax.set_title("Correlation per Subcarrier")
+ax.set_xlabel("Subcarrier Index"); ax.set_ylabel("Normalised correlation")
+ax.set_ylim(0, 1.05); ax.grid(True, alpha=0.3)
+plt.tight_layout(); plt.show()
+
+# %% 16. Side-by-side comparison (saves to file)
+plt.switch_backend("Agg")
 report = compare_results(result, vsa_result, cfg, output_dir="results")
 plt.switch_backend("module://matplotlib_inline.backend_inline")
 
-# %% 14. Sweep SNR
+# %% 17. Sweep SNR
 snr_range = [10, 15, 20, 25, 30, 40]
 evm_py = []
 evm_vsa = []
@@ -191,7 +247,7 @@ ax.set_xlabel("SNR (dB)"); ax.set_ylabel("EVM RMS (%)")
 ax.set_title("EVM vs SNR — Python vs VSA"); ax.legend(); ax.grid(True, which="both", alpha=0.3)
 plt.tight_layout(); plt.show()
 
-# %% 15. Sweep modulation order
+# %% 18. Sweep modulation order
 for mod in ["QPSK", "16QAM", "64QAM", "256QAM"]:
     c = NR5GConfig(mu=1, bw_mhz=20, n_rb=51, modulation=mod,
                    n_slots=2, snr_db=30, seed=42)
