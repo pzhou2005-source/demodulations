@@ -36,6 +36,7 @@ class VSAResult:
     evm_per_symbol: np.ndarray       # EVM per OFDM symbol (%)
     evm_per_subcarrier: np.ndarray   # EVM per subcarrier (%)
     raw_trace_data: dict             # all trace data keyed by trace name
+    is_simulated: bool = False
 
 
 class VSA89600:
@@ -53,7 +54,14 @@ class VSA89600:
         try:
             self.app = win32com.client.Dispatch("AgtVsa.Application")
         except Exception:
-            self.app = win32com.client.Dispatch("AgtVsa.Application.1")
+            try:
+                self.app = win32com.client.Dispatch("AgtVsa.Application.1")
+            except Exception as exc:
+                raise RuntimeError(
+                    "Cannot connect through the legacy VSA COM interface. "
+                    "Check VSA startup and automation support; newer installations "
+                    "may require a .NET adapter. No VSA measurement was obtained."
+                ) from exc
         self.app.Visible = self._visible
         self.app.IsRunning = True
         self.meas = self.app.Measurements.SelectedItem
@@ -153,9 +161,15 @@ class VSA89600:
                 pass
 
         # Extract key metrics
-        evm_rms = self._get_scalar("EvmRms") or 0.0
-        evm_peak = self._get_scalar("EvmPeak") or 0.0
-        freq_error = self._get_scalar("FrequencyError") or 0.0
+        scalars = {name: self._get_scalar(name)
+                   for name in ("EvmRms", "EvmPeak", "FrequencyError")}
+        invalid = [name for name, value in scalars.items()
+                   if value is None or not np.isfinite(value)]
+        if invalid:
+            raise RuntimeError("Missing or invalid VSA measurements: " + ", ".join(invalid))
+        evm_rms = scalars["EvmRms"]
+        evm_peak = scalars["EvmPeak"]
+        freq_error = scalars["FrequencyError"]
 
         # Constellation data
         const_data = traces.get("Constellation", np.array([]))
@@ -168,6 +182,9 @@ class VSA89600:
         else:
             sym_i = np.array([])
             sym_q = np.array([])
+
+        if not len(sym_i) or not np.all(np.isfinite(sym_i + 1j * sym_q)):
+            raise RuntimeError("VSA returned no valid constellation; comparison is unavailable")
 
         evm_sym = traces.get("EVM vs Symbol", np.array([]))
         evm_sc = traces.get("EVM vs Subcarrier", np.array([]))
@@ -193,15 +210,12 @@ class VSA89600:
         except AttributeError:
             try:
                 self.meas.RemoteCommand(cmd)
-            except Exception:
-                pass
+            except Exception as exc:
+                raise RuntimeError(f"VSA command failed: {cmd}") from exc
 
     def _restart_meas(self):
         """Restart measurement."""
-        try:
-            self.meas.Restart()
-        except Exception:
-            pass
+        self.meas.Restart()
         time.sleep(0.5)
 
     def _find_trace(self, name: str):
@@ -272,13 +286,14 @@ def simulate_vsa_result(rx_signal: np.ndarray, cfg) -> VSAResult:
 
     return VSAResult(
         evm_rms=result.evm_rms + evm_offset,
-        evm_peak=np.max(result.evm_per_symbol) + evm_offset * 2,
+        evm_peak=result.evm_peak + evm_offset * 2,
         freq_error_hz=rng.uniform(-5, 5),
         symbols_i=result.rx_symbols.real,
         symbols_q=result.rx_symbols.imag,
         evm_per_symbol=result.evm_per_symbol + rng.uniform(0, 0.1, len(result.evm_per_symbol)),
         evm_per_subcarrier=np.zeros(cfg.n_sc),
         raw_trace_data={},
+        is_simulated=True,
     )
 
 

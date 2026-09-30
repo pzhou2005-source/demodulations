@@ -29,6 +29,7 @@ class DemodResult:
     evm_rms: float                  # RMS EVM (%)
     ber: Optional[float] = None     # BER (if tx_bits provided)
     constellation_ref: Optional[np.ndarray] = None
+    evm_peak: Optional[float] = None
 
 
 def channel_estimate_dmrs(rx_grid: np.ndarray, cfg: NR5GConfig) -> np.ndarray:
@@ -134,6 +135,10 @@ def demodulate_nr5g(rx_signal: np.ndarray, cfg: NR5GConfig,
             pos += n
 
     evm_rms = compute_evm(tx_symbols, rx_symbols) if tx_symbols is not None else 0.0
+    evm_peak = None
+    if tx_symbols is not None:
+        evm_peak = float(np.max(np.abs(rx_symbols - tx_symbols)) /
+                         np.sqrt(np.mean(np.abs(tx_symbols) ** 2)) * 100.0)
 
     # 7) BER
     ber = None
@@ -153,6 +158,7 @@ def demodulate_nr5g(rx_signal: np.ndarray, cfg: NR5GConfig,
         evm_rms=evm_rms,
         ber=ber,
         constellation_ref=constellation_ref,
+        evm_peak=evm_peak,
     )
 
 

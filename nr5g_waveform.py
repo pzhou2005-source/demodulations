@@ -149,7 +149,7 @@ def generate_dmrs(n_sc: int, slot: int, symbol: int, cell_id: int) -> np.ndarray
               + 2 * cell_id) % (1 << 31)
     # DMRS on even subcarriers → n_sc // 2 complex symbols
     n_dmrs = n_sc // 2
-    seq = _gold_sequence(2 * n_dmrs, c_init)
+    seq = _gold_sequence(2 * n_dmrs, c_init).astype(np.int8)
     r = (1 / np.sqrt(2)) * ((1 - 2 * seq[0::2]) + 1j * (1 - 2 * seq[1::2]))
     return r
 
