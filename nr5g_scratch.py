@@ -248,9 +248,7 @@ ax.set_ylim(0, 1.05); ax.grid(True, alpha=0.3)
 plt.tight_layout(); plt.show()
 
 # %% 16. Side-by-side comparison (saves to file)
-plt.switch_backend("Agg")
 report = compare_results(result, vsa_result, cfg, output_dir="results")
-plt.switch_backend("module://matplotlib_inline.backend_inline")
 
 # %% 17. Sweep SNR — ZF vs MMSE
 snr_range = [10, 15, 20, 25, 30, 40]

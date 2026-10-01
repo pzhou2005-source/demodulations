@@ -1,0 +1,25 @@
+VSA comparison status recorded on 2026-09-30
+
+Connection retry: succeeded through the installed .NET API (pythonnet).
+Running VSA API version: 27.0.214.0
+Direct NR capability check: IsEnabledMeasurementExtension(NewRadio)=True
+Selecting NewRadio.MeasurementExtension on a temporary measurement succeeded.
+License state after selecting NR mode:
+  5G NR Modulation Analysis: IsLicensed(Code)=True, IsValid=True
+  5G NR/Pre-5G Modulation Analysis: IsLicensed(Code)=True, IsValid=False
+The earlier license-blocker conclusion based only on IsValid was incorrect.
+The temporary measurement was removed and the original selection restored.
+No independent VSA 5G NR EVM or constellation measurement was obtained.
+
+The current comparison_report.txt and plots are explicitly SIMULATED.
+They use the Python demodulator with synthetic metric offsets, not VSA data.
+Python 64QAM, 30 dB SNR, two slots, seed 42:
+  Before pilot fix: RMS EVM=68.158%, BER=0.2829016380
+  After pilot fix:  RMS EVM=2.304%, peak EVM=8.543%, BER=0
+Regression suite: 13 passed.
+
+Remaining prerequisites for an independent comparison:
+  Migrate the legacy COM measurement adapter to the installed .NET API.
+  Verify waveform framing, resource mapping, and EVM settings against VSA.
+  Run a real waveform measurement; mode selection alone is not demodulation.
+The exploratory .NET connection probe was not retained as a partial adapter.

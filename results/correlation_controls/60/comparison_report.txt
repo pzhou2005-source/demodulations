@@ -1,0 +1,21 @@
+============================================================
+  5G NR Demodulation Comparison
+============================================================
+  Reference: VSA 89600
+  Reference values supplied by external VSA.
+  Config: μ=1, BW=20MHz, 51RB, 64QAM
+  Slots: 20, SNR: 60.0dB
+  Python FFT window offset: -66 samples
+  Matched data: 16524 symbols, Python start index 16524
+  EVM metrics use the matched capture interval.
+------------------------------------------------------------
+  Metric                               Python    VSA 89600
+------------------------------------------------------------
+  EVM RMS (%)                           0.073        0.073
+  EVM Peak (%)                          0.287        0.279
+  Freq Error (Hz)                         N/A          0.0
+  BER (full Python capture)          0.00e+00          N/A
+  # Compared data symbols               16524        16524
+------------------------------------------------------------
+  EVM difference: 0.000 percentage points
+============================================================

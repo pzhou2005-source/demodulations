@@ -1,0 +1,8 @@
+reference=VSA 89600
+matched_symbols=16524
+offset=-16524
+phase_deg=-0.0283
+amp_ratio=0.999851
+xcorr_peak=0.999999
+symbol_corr=0.999999
+evm_diff=0.1641

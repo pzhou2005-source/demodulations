@@ -33,6 +33,7 @@ class DemodResult:
     noise_var_est: float = 0.0
     ber: Optional[float] = None
     constellation_ref: Optional[np.ndarray] = None
+    evm_peak: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,8 @@ def channel_estimate_dmrs(rx_grid: np.ndarray, cfg: NR5GConfig,
     filter, then applies the same estimate to all symbols in the slot
     (flat-fading assumption per slot).
     """
+    if cfg.channel_estimation not in ("linear", "flat"):
+        raise ValueError("channel_estimation must be 'linear' or 'flat'")
     n_sym, n_sc = rx_grid.shape
     h_est = np.ones((n_sym, n_sc), dtype=complex)
 
@@ -200,7 +203,8 @@ def demodulate_nr5g(rx_signal: np.ndarray, cfg: NR5GConfig,
         equaliser: 'zf' or 'mmse'
         cfo_correct: estimate and correct CFO before OFDM demod
     """
-    cp = _cp_lengths(cfg.n_fft, cfg.mu) * cfg.n_slots
+    cp = [length for slot in range(cfg.n_slots)
+          for length in _cp_lengths(cfg.n_fft, cfg.mu, slot)]
     n_sym_total = cfg.symbols_per_slot * cfg.n_slots
     sample_rate_hz = cfg.sample_rate_mhz * 1e6
 
@@ -260,6 +264,10 @@ def demodulate_nr5g(rx_signal: np.ndarray, cfg: NR5GConfig,
             pos += n
 
     evm_rms = compute_evm(tx_symbols, rx_symbols) if tx_symbols is not None else 0.0
+    evm_peak = None
+    if tx_symbols is not None:
+        evm_peak = float(np.max(np.abs(rx_symbols - tx_symbols)) /
+                         np.sqrt(np.mean(np.abs(tx_symbols) ** 2)) * 100.0)
 
     # 8) EVM per subcarrier
     evm_per_sc = np.zeros(cfg.n_sc)
@@ -287,6 +295,7 @@ def demodulate_nr5g(rx_signal: np.ndarray, cfg: NR5GConfig,
         noise_var_est=noise_var,
         ber=ber,
         constellation_ref=constellation_ref,
+        evm_peak=evm_peak,
     )
 
 

@@ -30,20 +30,13 @@ NUMEROLOGY = {
     3: {"scs_khz": 120, "slots_per_subframe": 8,  "symbols_per_slot": 14},
 }
 
-# Normal CP lengths (in samples at Nfft rate) per TS 38.211 Table 5.3.1-1
-# First symbol of each half-slot has extended CP.
-def _cp_lengths(nfft: int, mu: int) -> list[int]:
+def _cp_lengths(nfft: int, mu: int, slot: int = 0) -> list[int]:
     """Return list of CP lengths for one slot (14 symbols, normal CP)."""
     base = nfft * 144 // 2048
-    ext  = nfft * 512 // 2048  # extended portion for symbol 0 & 7
-    kappa = 1 << mu  # Ts/Tc scaling
-    cp = []
-    for sym in range(14):
-        if sym in (0, 7):
-            cp.append(base + ext // kappa)
-        else:
-            cp.append(base)
-    return cp
+    extra = nfft * 16 * (1 << mu) // 2048
+    half_subframe_symbols = 7 * (1 << mu)
+    return [base + extra if (14 * slot + symbol) % half_subframe_symbols == 0 else base
+            for symbol in range(14)]
 
 
 @dataclass
@@ -63,6 +56,8 @@ class NR5GConfig:
     channel_taps: Optional[list] = None  # multipath channel [complex coeffs]
     channel_delays: Optional[list] = None  # tap delays in samples
     seed: int = 42                  # RNG seed for data & noise
+    channel_estimation: str = "linear"
+    fft_window_offset: int = 0
 
     @property
     def scs_khz(self) -> int:
@@ -152,7 +147,7 @@ def generate_dmrs(n_sc: int, slot: int, symbol: int, cell_id: int) -> np.ndarray
               + 2 * cell_id) % (1 << 31)
     # DMRS on even subcarriers → n_sc // 2 complex symbols
     n_dmrs = n_sc // 2
-    seq = _gold_sequence(2 * n_dmrs, c_init)
+    seq = _gold_sequence(2 * n_dmrs, c_init).astype(np.int8)
     r = (1 / np.sqrt(2)) * ((1 - 2 * seq[0::2]) + 1j * (1 - 2 * seq[1::2]))
     return r
 
@@ -168,7 +163,7 @@ def ofdm_modulate(resource_grid: np.ndarray, n_fft: int, cp_lengths: list[int]) 
         freq = np.zeros(n_fft, dtype=complex)
         # map subcarriers centred around DC
         half = n_sc // 2
-        freq[1:half + 1] = resource_grid[sym_idx, half:]
+        freq[:half] = resource_grid[sym_idx, half:]
         freq[n_fft - half:] = resource_grid[sym_idx, :half]
         td = np.fft.ifft(freq) * np.sqrt(n_fft)
         cp_len = cp_lengths[sym_idx % len(cp_lengths)]
@@ -178,21 +173,33 @@ def ofdm_modulate(resource_grid: np.ndarray, n_fft: int, cp_lengths: list[int]) 
 
 
 def ofdm_demodulate(signal: np.ndarray, n_fft: int, n_sc: int,
-                     cp_lengths: list[int], n_symbols: int) -> np.ndarray:
-    """OFDM demodulate time-domain signal → resource grid [n_symbols x n_sc]."""
+             cp_lengths: list[int], n_symbols: int,
+             fft_window_offset: int = 0) -> np.ndarray:
+    """Demodulate an aligned OFDM recording, with optional early FFT placement.
+
+    A nonpositive sample offset must stay inside every cyclic prefix. Its
+    deterministic subcarrier phase ramp is removed before channel estimation.
+    """
+    if (not isinstance(fft_window_offset, (int, np.integer))
+        or not -min(cp_lengths) <= fft_window_offset <= 0):
+        raise ValueError("fft_window_offset must be an integer within the cyclic prefix")
     grid = np.zeros((n_symbols, n_sc), dtype=complex)
     pos = 0
     for sym_idx in range(n_symbols):
         cp_len = cp_lengths[sym_idx % len(cp_lengths)]
         pos += cp_len  # skip CP
-        td = signal[pos:pos + n_fft]
+        window_start = pos + fft_window_offset
+        td = signal[window_start:window_start + n_fft]
         if len(td) < n_fft:
             break
         freq = np.fft.fft(td) / np.sqrt(n_fft)
         half = n_sc // 2
-        grid[sym_idx, half:] = freq[1:half + 1]
+        grid[sym_idx, half:] = freq[:half]
         grid[sym_idx, :half] = freq[n_fft - half:]
         pos += n_fft
+    if fft_window_offset:
+        subcarriers = np.arange(-n_sc // 2, n_sc // 2)
+        grid *= np.exp(-2j * np.pi * subcarriers * fft_window_offset / n_fft)
     return grid
 
 
@@ -207,7 +214,8 @@ def generate_nr5g_waveform(cfg: NR5GConfig):
         time_signal, config
     """
     rng = np.random.default_rng(cfg.seed)
-    cp = _cp_lengths(cfg.n_fft, cfg.mu)
+    cp = [length for slot in range(cfg.n_slots)
+          for length in _cp_lengths(cfg.n_fft, cfg.mu, slot)]
     n_sym_total = cfg.symbols_per_slot * cfg.n_slots
     n_sc = cfg.n_sc
 
@@ -246,7 +254,7 @@ def generate_nr5g_waveform(cfg: NR5GConfig):
     tx_symbols = np.concatenate(all_tx_symbols)
 
     # OFDM modulate
-    cp_full = cp * cfg.n_slots  # repeat CP pattern for all slots
+    cp_full = cp
     time_signal = ofdm_modulate(resource_grid, cfg.n_fft, cp_full)
 
     # apply multipath channel
