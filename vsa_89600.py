@@ -251,33 +251,47 @@ def run_vsa_demod(iq_filepath: str, sample_rate_hz: float,
 # Simulated VSA results for offline development / testing
 # ---------------------------------------------------------------------------
 def simulate_vsa_result(rx_signal: np.ndarray, cfg) -> VSAResult:
-    """Simulate VSA-like results using our own demodulator (for offline testing).
-    
-    This lets you run the comparison pipeline without actual VSA hardware.
+    """Simulate VSA-like results using our demodulator with realistic offsets.
+
+    Adds small calibration-like differences to mimic real VSA measurement:
+    phase noise, amplitude scaling, frequency offset residual, per-SC EVM.
     """
     from nr5g_demod import demodulate_nr5g
     from nr5g_waveform import generate_nr5g_waveform
 
-    # re-generate TX for reference
     tx = generate_nr5g_waveform(cfg)
     result = demodulate_nr5g(
         rx_signal, cfg,
         tx_bits=tx["tx_bits"],
         tx_symbols=tx["tx_symbols"],
+        tx_grid=tx["resource_grid"],
         data_positions=tx["data_positions"],
+        equaliser="zf",
+        cfo_correct=False,
     )
-    # add small random offset to simulate VSA measurement differences
+
     rng = np.random.default_rng(99)
+    # simulate VSA measurement offsets
     evm_offset = rng.uniform(0.05, 0.3)
+    phase_jitter = rng.normal(0, 0.02, len(result.rx_symbols))
+    vsa_symbols = result.rx_symbols * np.exp(1j * phase_jitter)
+
+    # per-subcarrier EVM with slight band-edge degradation
+    sc_evm = result.evm_per_subcarrier.copy()
+    edge_boost = np.ones(cfg.n_sc)
+    edge_width = cfg.n_sc // 10
+    edge_boost[:edge_width] = 1.0 + 0.3 * np.linspace(1, 0, edge_width)
+    edge_boost[-edge_width:] = 1.0 + 0.3 * np.linspace(0, 1, edge_width)
+    sc_evm = sc_evm * edge_boost + rng.uniform(0, 0.05, cfg.n_sc)
 
     return VSAResult(
         evm_rms=result.evm_rms + evm_offset,
         evm_peak=np.max(result.evm_per_symbol) + evm_offset * 2,
         freq_error_hz=rng.uniform(-5, 5),
-        symbols_i=result.rx_symbols.real,
-        symbols_q=result.rx_symbols.imag,
+        symbols_i=vsa_symbols.real,
+        symbols_q=vsa_symbols.imag,
         evm_per_symbol=result.evm_per_symbol + rng.uniform(0, 0.1, len(result.evm_per_symbol)),
-        evm_per_subcarrier=np.zeros(cfg.n_sc),
+        evm_per_subcarrier=sc_evm,
         raw_trace_data={},
     )
 

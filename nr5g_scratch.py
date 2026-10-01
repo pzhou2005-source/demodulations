@@ -15,6 +15,9 @@ cfg = NR5GConfig(
     modulation="64QAM",
     n_slots=2,
     snr_db=30,
+    cfo_hz=150.0,        # 150 Hz carrier frequency offset
+    channel_taps=[1.0, 0.3+0.1j, 0.05],  # 3-tap multipath
+    channel_delays=[0, 3, 7],
     seed=42,
 )
 
@@ -22,6 +25,7 @@ print(f"Numerology μ={cfg.mu}: SCS={cfg.scs_khz} kHz, {cfg.symbols_per_slot} sy
 print(f"Subcarriers: {cfg.n_sc}  ({cfg.n_rb} RB × 12)")
 print(f"FFT size: {cfg.n_fft}, Sample rate: {cfg.sample_rate_mhz} MHz")
 print(f"Modulation: {cfg.modulation} ({cfg.bits_per_symbol} bits/sym)")
+print(f"CFO: {cfg.cfo_hz} Hz, Channel: {len(cfg.channel_taps)}-tap multipath")
 
 # %% 2. Generate 5G NR waveform
 from nr5g_waveform import generate_nr5g_waveform
@@ -121,16 +125,21 @@ ax.set_title("Equalisation Error (|eq - tx| per RE)")
 ax.set_xlabel("Subcarrier"); ax.set_ylabel("OFDM Symbol")
 plt.colorbar(ax.images[0], ax=ax); plt.tight_layout(); plt.show()
 
-# %% 9. Full demodulation pipeline
+# %% 9. Full demodulation pipeline (MMSE + CFO correction)
 from nr5g_demod import demodulate_nr5g
 
 result = demodulate_nr5g(
     time_signal, cfg,
     tx_bits=tx["tx_bits"],
     tx_symbols=tx["tx_symbols"],
+    tx_grid=tx["resource_grid"],
     data_positions=tx["data_positions"],
+    equaliser="mmse",
+    cfo_correct=True,
 )
 
+print(f"CFO estimate:  {result.cfo_est_hz:.1f} Hz  (true: {cfg.cfo_hz} Hz)")
+print(f"Noise var est: {result.noise_var_est:.2e}")
 print(f"EVM RMS:       {result.evm_rms:.3f}%")
 print(f"BER:           {result.ber:.2e}")
 print(f"RX symbols:    {len(result.rx_symbols)}")
@@ -154,6 +163,26 @@ ax.set_title("EVM per OFDM Symbol")
 ax.set_xlabel("OFDM Symbol Index"); ax.set_ylabel("EVM (%)")
 ax.legend(); ax.grid(True, alpha=0.3)
 plt.tight_layout(); plt.show()
+
+# %% 11b. EVM per subcarrier
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.plot(result.evm_per_subcarrier, linewidth=0.8, color="steelblue")
+ax.axhline(result.evm_rms, color="red", linestyle="--", label=f"RMS = {result.evm_rms:.2f}%")
+ax.set_title("EVM per Subcarrier")
+ax.set_xlabel("Subcarrier Index"); ax.set_ylabel("EVM (%)")
+ax.legend(); ax.grid(True, alpha=0.3)
+plt.tight_layout(); plt.show()
+
+# %% 11c. ZF vs MMSE comparison
+result_zf = demodulate_nr5g(
+    time_signal, cfg,
+    tx_bits=tx["tx_bits"], tx_symbols=tx["tx_symbols"],
+    tx_grid=tx["resource_grid"], data_positions=tx["data_positions"],
+    equaliser="zf", cfo_correct=True,
+)
+print(f"ZF:   EVM={result_zf.evm_rms:.3f}%, BER={result_zf.ber:.2e}")
+print(f"MMSE: EVM={result.evm_rms:.3f}%, BER={result.ber:.2e}")
+print(f"MMSE advantage: {result_zf.evm_rms - result.evm_rms:.3f}% EVM reduction")
 
 # %% 12. VSA 89600 simulation & comparison
 from vsa_89600 import simulate_vsa_result
@@ -223,36 +252,45 @@ plt.switch_backend("Agg")
 report = compare_results(result, vsa_result, cfg, output_dir="results")
 plt.switch_backend("module://matplotlib_inline.backend_inline")
 
-# %% 17. Sweep SNR
+# %% 17. Sweep SNR — ZF vs MMSE
 snr_range = [10, 15, 20, 25, 30, 40]
-evm_py = []
-evm_vsa = []
+evm_zf_list, evm_mmse_list, evm_vsa_list = [], [], []
 
 for snr in snr_range:
     c = NR5GConfig(mu=1, bw_mhz=20, n_rb=51, modulation="64QAM",
-                   n_slots=2, snr_db=snr, seed=42)
+                   n_slots=2, snr_db=snr, cfo_hz=150, seed=42,
+                   channel_taps=[1.0, 0.3+0.1j, 0.05], channel_delays=[0, 3, 7])
     t = generate_nr5g_waveform(c)
-    r = demodulate_nr5g(t["time_signal"], c,
-                        tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
-                        data_positions=t["data_positions"])
+    r_zf = demodulate_nr5g(t["time_signal"], c,
+                           tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
+                           tx_grid=t["resource_grid"], data_positions=t["data_positions"],
+                           equaliser="zf")
+    r_mmse = demodulate_nr5g(t["time_signal"], c,
+                             tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
+                             tx_grid=t["resource_grid"], data_positions=t["data_positions"],
+                             equaliser="mmse")
     v = simulate_vsa_result(t["time_signal"], c)
-    evm_py.append(r.evm_rms)
-    evm_vsa.append(v.evm_rms)
-    print(f"SNR={snr:3d} dB → Python EVM={r.evm_rms:.3f}%, VSA EVM={v.evm_rms:.3f}%")
+    evm_zf_list.append(r_zf.evm_rms)
+    evm_mmse_list.append(r_mmse.evm_rms)
+    evm_vsa_list.append(v.evm_rms)
+    print(f"SNR={snr:3d} dB → ZF={r_zf.evm_rms:.3f}%, MMSE={r_mmse.evm_rms:.3f}%, VSA={v.evm_rms:.3f}%")
 
 fig, ax = plt.subplots(figsize=(8, 5))
-ax.semilogy(snr_range, evm_py, "o-", label="Python demod")
-ax.semilogy(snr_range, evm_vsa, "s--", label="VSA 89600 (sim)")
+ax.semilogy(snr_range, evm_zf_list, "^--", label="Python ZF")
+ax.semilogy(snr_range, evm_mmse_list, "o-", label="Python MMSE")
+ax.semilogy(snr_range, evm_vsa_list, "s:", label="VSA 89600 (sim)")
 ax.set_xlabel("SNR (dB)"); ax.set_ylabel("EVM RMS (%)")
-ax.set_title("EVM vs SNR — Python vs VSA"); ax.legend(); ax.grid(True, which="both", alpha=0.3)
+ax.set_title("EVM vs SNR — ZF vs MMSE vs VSA"); ax.legend(); ax.grid(True, which="both", alpha=0.3)
 plt.tight_layout(); plt.show()
 
 # %% 18. Sweep modulation order
 for mod in ["QPSK", "16QAM", "64QAM", "256QAM"]:
     c = NR5GConfig(mu=1, bw_mhz=20, n_rb=51, modulation=mod,
-                   n_slots=2, snr_db=30, seed=42)
+                   n_slots=2, snr_db=30, cfo_hz=150, seed=42,
+                   channel_taps=[1.0, 0.3+0.1j, 0.05], channel_delays=[0, 3, 7])
     t = generate_nr5g_waveform(c)
     r = demodulate_nr5g(t["time_signal"], c,
                         tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
-                        data_positions=t["data_positions"])
-    print(f"{mod:>6s}: EVM={r.evm_rms:.3f}%, BER={r.ber:.1e}")
+                        tx_grid=t["resource_grid"], data_positions=t["data_positions"],
+                        equaliser="mmse")
+    print(f"{mod:>6s}: EVM={r.evm_rms:.3f}%, BER={r.ber:.1e}, CFO_est={r.cfo_est_hz:.1f}Hz")

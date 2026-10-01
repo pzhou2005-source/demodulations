@@ -59,6 +59,9 @@ class NR5GConfig:
     dmrs_symbol: int = 2            # OFDM symbol index carrying DMRS
     cell_id: int = 0                # physical cell ID (for DMRS sequence)
     snr_db: Optional[float] = None  # add AWGN if set
+    cfo_hz: float = 0.0             # carrier frequency offset impairment
+    channel_taps: Optional[list] = None  # multipath channel [complex coeffs]
+    channel_delays: Optional[list] = None  # tap delays in samples
     seed: int = 42                  # RNG seed for data & noise
 
     @property
@@ -246,16 +249,31 @@ def generate_nr5g_waveform(cfg: NR5GConfig):
     cp_full = cp * cfg.n_slots  # repeat CP pattern for all slots
     time_signal = ofdm_modulate(resource_grid, cfg.n_fft, cp_full)
 
+    # apply multipath channel
+    time_signal_ch = time_signal.copy()
+    if cfg.channel_taps is not None:
+        taps = np.array(cfg.channel_taps, dtype=complex)
+        delays = cfg.channel_delays or list(range(len(taps)))
+        h = np.zeros(max(delays) + 1, dtype=complex)
+        for coeff, d in zip(taps, delays):
+            h[d] = coeff
+        time_signal_ch = np.convolve(time_signal, h)[:len(time_signal)]
+
+    # apply CFO
+    if cfg.cfo_hz != 0.0:
+        t = np.arange(len(time_signal_ch)) / (cfg.sample_rate_mhz * 1e6)
+        time_signal_ch = time_signal_ch * np.exp(1j * 2 * np.pi * cfg.cfo_hz * t)
+
     # add AWGN
-    time_signal_noisy = time_signal.copy()
+    time_signal_noisy = time_signal_ch.copy()
     if cfg.snr_db is not None:
-        sig_power = np.mean(np.abs(time_signal) ** 2)
+        sig_power = np.mean(np.abs(time_signal_ch) ** 2)
         noise_power = sig_power / (10 ** (cfg.snr_db / 10))
         noise = np.sqrt(noise_power / 2) * (
-            rng.standard_normal(len(time_signal))
-            + 1j * rng.standard_normal(len(time_signal))
+            rng.standard_normal(len(time_signal_ch))
+            + 1j * rng.standard_normal(len(time_signal_ch))
         )
-        time_signal_noisy = time_signal + noise
+        time_signal_noisy = time_signal_ch + noise
 
     return {
         "tx_bits": tx_bits,

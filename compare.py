@@ -374,6 +374,7 @@ def run_full_comparison(use_real_vsa: bool = False, snr_db: float = 30.0,
         tx["time_signal"], cfg,
         tx_bits=tx["tx_bits"],
         tx_symbols=tx["tx_symbols"],
+        tx_grid=tx["resource_grid"],
         data_positions=tx["data_positions"],
     )
     print(f"  EVM RMS = {py_result.evm_rms:.3f}%, BER = {py_result.ber:.2e}")
