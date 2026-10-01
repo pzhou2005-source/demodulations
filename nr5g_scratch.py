@@ -219,9 +219,7 @@ ax.set_ylim(0, 1.05); ax.grid(True, alpha=0.3)
 plt.tight_layout(); plt.show()
 
 # %% 16. Side-by-side comparison (saves to file)
-plt.switch_backend("Agg")
 report = compare_results(result, vsa_result, cfg, output_dir="results")
-plt.switch_backend("module://matplotlib_inline.backend_inline")
 
 # %% 17. Sweep SNR
 snr_range = [10, 15, 20, 25, 30, 40]
@@ -256,3 +254,39 @@ for mod in ["QPSK", "16QAM", "64QAM", "256QAM"]:
                         tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
                         data_positions=t["data_positions"])
     print(f"{mod:>6s}: EVM={r.evm_rms:.3f}%, BER={r.ber:.1e}")
+
+# %% 19. Wi-Fi 7-inspired OFDM simulation (not an EHT packet)
+import matplotlib.pyplot as plt
+from wireless_phy import WiFi7Config, generate_wifi7_waveform, demodulate_wifi7, plot_wireless_result
+
+wifi_cfg = WiFi7Config(bandwidth_mhz=20, modulation="4096QAM", snr_db=50)
+wifi_waveform = generate_wifi7_waveform(wifi_cfg)
+wifi_result = demodulate_wifi7(wifi_waveform["time_signal"], wifi_cfg,
+                               wifi_waveform["tx_bits"], wifi_waveform["tx_symbols"])
+print(f"Wi-Fi OFDM model: EVM={wifi_result.evm_rms:.4f}%, BER={wifi_result.ber:.2e}")
+wifi_figure = plot_wireless_result(wifi_waveform, wifi_result)
+plt.show()
+
+# %% 20. Bluetooth LE GFSK simulation (uncoded, aligned payload)
+import matplotlib.pyplot as plt
+from wireless_phy import BluetoothConfig, generate_bluetooth_waveform, demodulate_bluetooth, plot_wireless_result
+
+bluetooth_cfg = BluetoothConfig(phy="LE2M", snr_db=20)
+bluetooth_waveform = generate_bluetooth_waveform(bluetooth_cfg)
+bluetooth_result = demodulate_bluetooth(bluetooth_waveform["time_signal"], bluetooth_cfg,
+                                       bluetooth_waveform["tx_bits"])
+print(f"Bluetooth GFSK model: BER={bluetooth_result.ber:.2e}; QAM-style EVM is not applicable")
+bluetooth_figure = plot_wireless_result(bluetooth_waveform, bluetooth_result)
+plt.show()
+
+# %% 21. UWB BPM-BPSK pulse simulation (not an IEEE 802.15.4z packet)
+import matplotlib.pyplot as plt
+from wireless_phy import UWBConfig, generate_uwb_waveform, demodulate_uwb, plot_wireless_result
+
+uwb_cfg = UWBConfig(snr_db=20)
+uwb_waveform = generate_uwb_waveform(uwb_cfg)
+uwb_result = demodulate_uwb(uwb_waveform["time_signal"], uwb_cfg,
+                           uwb_waveform["tx_bits"], uwb_waveform["tx_symbols"])
+print(f"UWB pulse model: matched-filter EVM={uwb_result.evm_rms:.4f}%, BER={uwb_result.ber:.2e}")
+uwb_figure = plot_wireless_result(uwb_waveform, uwb_result)
+plt.show()

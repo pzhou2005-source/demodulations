@@ -33,12 +33,14 @@ class DemodResult:
 
 
 def channel_estimate_dmrs(rx_grid: np.ndarray, cfg: NR5GConfig) -> np.ndarray:
-    """Least-squares channel estimation from DMRS, with linear interpolation.
+    """Pilot-only least-squares channel estimation from DMRS.
 
-    DMRS sits on even subcarriers of the DMRS symbol(s).
-    Interpolate in frequency across subcarriers, then copy to all symbols
-    (flat-fading assumption across one slot — good enough for static/AWGN).
+    Linear mode interpolates pilots in frequency for a frequency-selective
+    channel. Flat mode averages pilots within each slot to reduce noise when
+    the channel is known to be frequency-flat. Both assume a static slot.
     """
+    if cfg.channel_estimation not in ("linear", "flat"):
+        raise ValueError("channel_estimation must be 'linear' or 'flat'")
     n_sym, n_sc = rx_grid.shape
     h_est = np.ones((n_sym, n_sc), dtype=complex)
 
@@ -50,11 +52,13 @@ def channel_estimate_dmrs(rx_grid: np.ndarray, cfg: NR5GConfig) -> np.ndarray:
         rx_dmrs = rx_grid[sym_global, 0::2]
         h_dmrs = rx_dmrs / dmrs_ref  # LS: H = Y / X
 
-        # interpolate to all subcarriers (linear)
-        sc_dmrs = np.arange(0, n_sc, 2)
-        sc_all = np.arange(n_sc)
-        h_full = np.interp(sc_all, sc_dmrs, h_dmrs.real) + \
-                 1j * np.interp(sc_all, sc_dmrs, h_dmrs.imag)
+        if cfg.channel_estimation == "flat":
+            h_full = np.full(n_sc, np.mean(h_dmrs), dtype=complex)
+        else:
+            sc_dmrs = np.arange(0, n_sc, 2)
+            sc_all = np.arange(n_sc)
+            h_full = np.interp(sc_all, sc_dmrs, h_dmrs.real) + \
+                     1j * np.interp(sc_all, sc_dmrs, h_dmrs.imag)
 
         # apply to all symbols in this slot
         sym_start = slot * cfg.symbols_per_slot
@@ -90,11 +94,13 @@ def demodulate_nr5g(rx_signal: np.ndarray, cfg: NR5GConfig,
         tx_symbols: (optional) original symbols for EVM
         data_positions: (optional) list of (sym_idx, 'all'|'odd')
     """
-    cp = _cp_lengths(cfg.n_fft, cfg.mu) * cfg.n_slots
+    cp = [length for slot in range(cfg.n_slots)
+          for length in _cp_lengths(cfg.n_fft, cfg.mu, slot)]
     n_sym_total = cfg.symbols_per_slot * cfg.n_slots
 
     # 1) OFDM demodulate
-    rx_grid = ofdm_demodulate(rx_signal, cfg.n_fft, cfg.n_sc, cp, n_sym_total)
+    rx_grid = ofdm_demodulate(rx_signal, cfg.n_fft, cfg.n_sc, cp, n_sym_total,
+                              fft_window_offset=cfg.fft_window_offset)
 
     # 2) Channel estimation
     h_est = channel_estimate_dmrs(rx_grid, cfg)
