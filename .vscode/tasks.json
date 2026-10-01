@@ -1,0 +1,552 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Validate VSA adapter connection",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"from vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    print(vsa.app.Version)\n    print(vsa.meas.Name)\nfinally:\n    vsa.disconnect()"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect VSA NR configuration types",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import clr, sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    nr_api = vsa._nr_api\n    nr = nr_api.MeasurementExtension.CastToExtensionType(vsa.meas.SetMeasurementExtension(clr.GetClrType(nr_api.MeasurementExtension)))\n    for name in sys.argv[1:]:\n        enum_type = clr.GetClrType(getattr(nr_api, name))\n        print(name, list(enum_type.GetEnumNames()))\n    print(nr.PrimaryComponentCarrier.PrimaryDownlinkBwp.Numerology)\n    print(nr.PrimaryComponentCarrier.PrimaryDownlinkBwp.PrimaryPdsch.Name)\n    print(list(vsa.app.Display.Traces.DataNames))\nfinally:\n    vsa.disconnect()",
+				"StandardProfile",
+				"Numerology",
+				"MaximumTransmissionBandwidth",
+				"ModulationFormat",
+				"MappingType",
+				"DmrsConfigType",
+				"DmrsAddPosition",
+				"DmrsDuration",
+				"DmrsMappingTypeAPosition",
+				"DmrsNidSource",
+				"ReservedDmrsCdmGroupNumber",
+				"SynchronizationSource",
+				"SynchronizationTechnique",
+				"SymbolPhaseCompensationSource",
+				"EqualizerTrainingSignalBasis",
+				"EqualizerTrainingTimeBasis"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect VSA NR configuration types",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import clr, sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    nr_api = vsa._nr_api\n    nr = nr_api.MeasurementExtension.CastToExtensionType(vsa.meas.SetMeasurementExtension(clr.GetClrType(nr_api.MeasurementExtension)))\n    for name in sys.argv[1:]: print(name, list(clr.GetClrType(getattr(nr_api, name)).GetEnumNames()))\n    print(nr.PrimaryComponentCarrier.PrimaryDownlinkBwp.Numerology)\n    print(nr.PrimaryComponentCarrier.PrimaryDownlinkBwp.PrimaryPdsch.Name)\n    print(list(vsa.app.Display.Traces.DataNames))\nfinally:\n    vsa.disconnect()",
+				"StandardProfile",
+				"Numerology",
+				"MaximumTransmissionBandwidth",
+				"ModulationFormat",
+				"MappingType",
+				"DmrsConfigType",
+				"DmrsAddPosition",
+				"DmrsDuration",
+				"DmrsMappingTypeAPosition",
+				"DmrsNidSource",
+				"ReservedDmrsCdmGroupNumber",
+				"SynchronizationSource",
+				"SynchronizationTechnique",
+				"SymbolPhaseCompensationSource",
+				"EqualizerTrainingSignalBasis",
+				"EqualizerTrainingTimeBasis"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect NR API types v2",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import clr, sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    nr_api = vsa._nr_api\n    nr = nr_api.MeasurementExtension.CastToExtensionType(vsa.meas.SetMeasurementExtension(clr.GetClrType(nr_api.MeasurementExtension)))\n    for name in sys.argv[1:]: print(name, list(clr.GetClrType(getattr(nr_api, name)).GetEnumNames()))\n    print(nr.PrimaryComponentCarrier.PrimaryDownlinkBwp.Numerology)\n    print(nr.PrimaryComponentCarrier.PrimaryDownlinkBwp.PrimaryPdsch.Name)\n    print(list(vsa.app.Display.Traces.DataNames))\nfinally:\n    vsa.disconnect()",
+				"StandardProfile",
+				"Numerology",
+				"MaximumTransmissionBandwidth",
+				"ModulationFormat",
+				"MappingType",
+				"DmrsConfigType",
+				"DmrsAddPosition",
+				"DmrsDuration",
+				"DmrsMappingTypeAPosition",
+				"DmrsNidSource",
+				"ReservedDmrsCdmGroupNumber",
+				"SynchronizationSource",
+				"SynchronizationTechnique",
+				"SymbolPhaseCompensationSource",
+				"EqualizerTrainingSignalBasis",
+				"EqualizerTrainingTimeBasis"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Real NR comparison pipeline",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"compare.py",
+				"--real-vsa"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Install MAT recording dependency",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-m",
+				"pip",
+				"install",
+				"scipy"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify Jupyter plotting setup",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import io, sys, ipykernel, IPython, matplotlib, numpy; matplotlib.use(sys.argv[1]); import matplotlib.pyplot as plt; figure, axes = plt.subplots(); axes.plot(numpy.arange(3)); buffer = io.BytesIO(); figure.savefig(buffer, format=sys.argv[2]); print(sys.argv[3], ipykernel.__version__); print(sys.argv[4], matplotlib.__version__); print(sys.argv[5], buffer.tell()); plt.close(figure)",
+				"Agg",
+				"png",
+				"ipykernel:",
+				"Matplotlib:",
+				"Rendered PNG bytes:"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect live VSA acquisition status",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import clr, sys, importlib; sys.path.extend(sys.argv[1:3]); clr.AddReference(sys.argv[3]); api = importlib.import_module(sys.argv[4]); app = api.ApplicationFactory.Create(); print([(measurement.Name, measurement.IsRunning, measurement.Message, str(measurement.Status.Value)) for measurement in app.Measurements])",
+				"C:/Program Files/Keysight/89600 Software 2023/89600 VSA Software/Interfaces",
+				"C:/Program Files/Keysight/89600 Software 2023/89600 VSA Software",
+				"C:/Program Files/Keysight/89600 Software 2023/89600 VSA Software/Interfaces/Agilent.SA.Vsa.Interfaces.dll",
+				"Agilent.SA.Vsa"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Capture real NR pipeline log",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import subprocess, sys, pathlib; result = subprocess.run([sys.executable] + sys.argv[2:], capture_output=True); pathlib.Path(sys.argv[1]).write_bytes(result.stdout + result.stderr); print(result.stdout.decode()); print(result.stderr.decode()); sys.exit(result.returncode)",
+				"results/vsa_run.log",
+				"-u",
+				"-X",
+				"utf8",
+				"compare.py",
+				"--real-vsa"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate NR framing regressions",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"test_nr5g.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect outstanding comparison processes",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import win32com.client, sys; service = win32com.client.GetObject(sys.argv[1]); print([(process.ProcessId, process.ParentProcessId, process.CreationDate, process.CommandLine) for process in service.ExecQuery(sys.argv[2]) if process.CommandLine and sys.argv[3] in process.CommandLine])",
+				"winmgmts:",
+				"SELECT ProcessId, ParentProcessId, CreationDate, CommandLine FROM Win32_Process WHERE Name='python.exe'",
+				"compare.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect comparison processes v2",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import win32com.client, sys, os; service = win32com.client.GetObject(sys.argv[1]); print([(process.ProcessId, process.ParentProcessId, process.CommandLine) for process in service.InstancesOf(sys.argv[2]) if process.Name == sys.argv[3] and process.CommandLine and sys.argv[4] in process.CommandLine and process.ProcessId != os.getpid()])",
+				"winmgmts:",
+				"Win32_Process",
+				"python.exe",
+				"compare.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect NR playback metadata",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.load_iq_binary(sys.argv[1], 61.44e6)\n    vsa.setup_nr5g_demod()\n    print(vsa.meas.Input.DataFrom)\n    for name in sys.argv[2:]: print(name, getattr(vsa.meas.Input.Recording, name))\n    print(vsa.meas.Frequency.Span, vsa.meas.Frequency.SampleRate, vsa.meas.Frequency.InputSampleRate)\n    print(vsa._nr.SystemSampleFrequency, vsa._nr.AcquisitionMode)\n    print(vsa.meas.Input.LogicalChannels.Count)\n    vsa._restart_meas()\n    data = vsa.meas.MeasurementData(sys.argv[2])\nfinally:\n    vsa.disconnect()",
+				"results/nr5g_waveform.bin",
+				"PlayPoints",
+				"PlayStart",
+				"PlayStop",
+				"PlaySampleRate",
+				"PlayCenter",
+				"PlaySpan"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect VSA acquisition length",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.load_iq_binary(sys.argv[1], 61.44e6)\n    vsa.setup_nr5g_demod()\n    print(vsa.meas.Time.Length, vsa.meas.Time.Points)\n    print(vsa._nr.ResultLength, vsa._nr.ResultLengthAdditionalSlots, vsa._nr.SubframeInterval, vsa._nr.SymbolInterval)\n    print(vsa.meas.Input.Recording.PlayPosition, vsa.meas.Input.Recording.PlayDelaySec)\n    print(vsa.meas.Input.Recording.Trigger.Style)\nfinally:\n    vsa.disconnect()",
+				"results/nr5g_waveform.bin"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect effective NR resource configuration",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.load_iq_binary(sys.argv[1], 61.44e6)\n    vsa.setup_nr5g_demod()\n    carrier = vsa._nr.PrimaryComponentCarrier\n    print(carrier.LinkDirection, carrier.MaximumTransmissionBandwidth, carrier.CellIdentity)\n    print([(index, grid.IsGridEnabled, grid.Start, grid.Size) for index, grid in enumerate(carrier.ResourceGridCollection)])\n    pdsch = carrier.PrimaryDownlinkBwp.PrimaryPdsch\n    for name in sys.argv[2:]: print(name, getattr(pdsch, name))\n    print(vsa.meas.Frequency.Center, vsa._nr.AnalysisStartBoundary)\n    vsa._restart_meas()\n    print(vsa.meas.Time.Length, vsa.meas.Time.Points)\nfinally:\n    vsa.disconnect()",
+				"results/nr5g_waveform.bin",
+				"LayerNumber",
+				"AntennaPort",
+				"AntennaPortsUsed",
+				"UseAntennaPortsIndex",
+				"DmrsPowerBoosting",
+				"DmrsConfigType",
+				"DmrsAddPos",
+				"DmrsDuration",
+				"DmrsMappingTypeAPosition",
+				"ScramblingIdZero",
+				"Nscid",
+				"ReservedCdmGroupNumber"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect VSA native trace validity",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys, numpy as np\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.load_iq_binary(sys.argv[1], 61.44e6)\n    vsa.setup_nr5g_demod()\n    for name in sys.argv[2:]: vsa.meas.IsCalculateMeasurementData(name, True)\n    vsa._restart_meas()\n    for name in sys.argv[2:]:\n        data = vsa.meas.MeasurementData(name)\n        print(name, data.Status, data.Indicator, data.IndicatorReason, data.Points, data.IsComplex, data.XDelta)\n        values = np.asarray(list(data.DoubleData))\n        print(values.shape, values[:10], np.count_nonzero(np.isfinite(values)))\n        data.Dispose()\nfinally:\n    vsa.disconnect()",
+				"results/nr5g_waveform.bin",
+				"Raw Main Time1",
+				"Search Time1",
+				"IQ Meas1",
+				"Summary1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect VSA native trace validity v2",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys, numpy as np\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.load_iq_binary(sys.argv[1], 61.44e6)\n    vsa.setup_nr5g_demod()\n    for name in sys.argv[2:]: vsa.meas.IsCalculateMeasurementData(name, True)\n    vsa._restart_meas()\n    for name in sys.argv[2:]: data = vsa.meas.MeasurementData(name); print(name, data.Status, data.Indicator, data.IndicatorReason, data.Points, data.IsComplex, data.XDelta); values = np.asarray(list(data.DoubleData)); print(values.shape, values[:10], np.count_nonzero(np.isfinite(values))); data.Dispose()\nfinally:\n    vsa.disconnect()",
+				"results/nr5g_waveform.bin",
+				"Raw Main Time1",
+				"Search Time1",
+				"IQ Meas1",
+				"Summary1"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect NR synchronization alignment",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys, numpy as np\nfrom scipy.signal import correlate\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.load_iq_binary(sys.argv[1], 61.44e6)\n    vsa.setup_nr5g_demod()\n    carrier = vsa._nr.PrimaryComponentCarrier\n    pdsch = carrier.PrimaryDownlinkBwp.PrimaryPdsch\n    print(pdsch.DmrsInitValueDefinition, pdsch.DmrsInitValue, pdsch.DmrsMappingReference)\n    print(carrier.DownlinkSynchronizationSourceIndex, carrier.SymbolPhaseCompensationSource)\n    print([(mapping.SymbolPhaseCompensationSource, mapping.SymbolPhaseCompensationFrequency) for mapping in vsa._nr.CarrierAggregation.CarrierMappings])\n    vsa.meas.IsCalculateMeasurementData(sys.argv[2], True)\n    vsa._restart_meas()\n    data = vsa.meas.MeasurementData(sys.argv[2])\n    print(data.XStart, data.XDelta)\n    raw = np.asarray(list(data.DoubleData)); raw = raw[0::2] + 1j * raw[1::2]\n    data.Dispose()\n    samples = np.fromfile(sys.argv[1], dtype=np.float32); samples = samples[0::2] + 1j * samples[1::2]\n    correlations = correlate(samples, raw, mode=sys.argv[3], method=sys.argv[4])\n    offset = int(np.argmax(np.abs(correlations)))\n    segment = samples[offset:offset + len(raw)]\n    print(offset, abs(np.vdot(raw, segment)) / np.sqrt(np.vdot(raw, raw).real * np.vdot(segment, segment).real))\n    np.savez(sys.argv[5], raw=raw, samples=samples, offset=offset)\nfinally:\n    vsa.disconnect()",
+				"results/nr5g_waveform.bin",
+				"Raw Main Time1",
+				"valid",
+				"fft",
+				"results/vsa_debug.npz"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Install independent NR reference",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-m",
+				"pip",
+				"install",
+				"py3gpp"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify Gold sequence independently",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import numpy as np; from py3gpp import nrPRBS; from nr5g_waveform import _gold_sequence; initializer = (1 << 17) * 3; actual = _gold_sequence(612, initializer); reference = nrPRBS(initializer, 612); np.testing.assert_array_equal(actual, reference); print(sys.argv[1])",
+				"Gold sequence matches py3gpp"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Verify Gold sequence independently v2",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import numpy as np; from py3gpp import nrPRBS; from nr5g_waveform import _gold_sequence; initializer = (1 << 17) * 3; np.testing.assert_array_equal(_gold_sequence(612, initializer), nrPRBS(initializer, 612)); print(True)"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate adapter with supplied NR example",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.setup_nr5g_demod()\n    vsa.meas.RecallSignalSetup(sys.argv[1])\n    vsa.meas.Input.Recording.RecallFile(sys.argv[2], sys.argv[3])\n    vsa.meas.Input.DataFrom = vsa._api.DataSource.Recording\n    vsa.meas.Input.Recording.IsPlayLoop = True\n    vsa._restart_meas()\n    print(vsa._get_scalar(sys.argv[4]))\nfinally:\n    vsa.disconnect()",
+				"C:/Program Files/Keysight/89600 Software 2023/89600 VSA Software/Help/Signals/5G NR/DL_at_3_5_GHz_100_MHz.setx",
+				"C:/Program Files/Keysight/89600 Software 2023/89600 VSA Software/Help/Signals/5G NR/DL_at_3_5_GHz_100_MHz.sdf",
+				"SDF",
+				"EvmRms"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate independent NR waveform reference",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"test_nr5g.py",
+				"-k",
+				"independent_nr_reference"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect NR allocation detection",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys\nfrom vsa_89600 import VSA89600\nvsa = VSA89600()\ntry:\n    vsa.connect()\n    vsa.setup_nr5g_demod()\n    carrier = vsa._nr.PrimaryComponentCarrier\n    pdsch = carrier.PrimaryDownlinkBwp.PrimaryPdsch\n    print(carrier.PdschAutoDetectionMode, carrier.PdschReferenceGenerationMode, carrier.IsSsbAutoDetectionEnabled)\n    print(pdsch.SlotFormat, pdsch.Sfi, pdsch.FlexibleSymbols, pdsch.FramePeriod, pdsch.GetAllocatedSlotIndexes())\n    print(vsa._nr.SynchronizationTechnique, carrier.SynchronizationTechnique)\n    print(pdsch.FirstSymbolIndex, pdsch.LastSymbolIndex, pdsch.IsPdschEnabled)\nfinally:\n    vsa.disconnect()"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate wireless PHY simulations",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"test_wireless_phy.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate VSA symbol alignment",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"test_nr5g.py",
+				"-k",
+				"correlation or vsa_grid"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect saved VSA metric arrays",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import numpy as np, sys; result = np.load(sys.argv[1]); print([(name, result[name].shape, result[name].ravel()[:5], float(np.mean(result[name])) if result[name].size else None) for name in sys.argv[2:]])",
+				"results/comparison_data.npz",
+				"is_simulated",
+				"vsa_evm_per_symbol",
+				"vsa_evm_per_subcarrier",
+				"correlation"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Inspect NR FFT-window correlation",
+			"type": "shell",
+			"command": "C:/code/demodulations/.venv/Scripts/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import sys, numpy as np\nfrom nr5g_waveform import NR5GConfig\nfrom nr5g_demod import demodulate_nr5g\nfrom compare import _complex_corr\ndata = np.load(sys.argv[1])\npairs = np.fromfile(sys.argv[2], dtype=np.float32).reshape(-1, 2)\nrecording = pairs[:, 0] + 1j * pairs[:, 1]\nvsa = data[sys.argv[3]]\nstart = max(0, -int(data[sys.argv[4]]))\nfor offset in (0, -16, -32, -48, -64, -72, -80, -96, -112, -128, -144):\n    result = demodulate_nr5g(recording, NR5GConfig(n_slots=20, fft_window_offset=offset))\n    python_symbols = result.rx_symbols[start:start + len(vsa)]\n    gain = np.sqrt(np.mean(np.abs(vsa) ** 2) / np.mean(np.abs(python_symbols) ** 2)) * np.exp(1j * np.angle(np.vdot(python_symbols, vsa)))\n    error = 100 * np.sqrt(np.mean(np.abs(vsa / gain - python_symbols) ** 2) / np.mean(np.abs(python_symbols) ** 2))\n    print(offset, _complex_corr(python_symbols, vsa), error, flush=True)",
+				"results/comparison_data.npz",
+				"results/nr5g_waveform.bin",
+				"vsa_symbols",
+				"symbol_offset"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Refine NR FFT-window correlation",
+			"type": "shell",
+			"command": "C:/code/demodulations/.venv/Scripts/python.exe",
+			"args": [
+				"-u",
+				"-c",
+				"import sys, numpy as np\nfrom nr5g_waveform import NR5GConfig\nfrom nr5g_demod import demodulate_nr5g\nfrom compare import _complex_corr\ndata = np.load(sys.argv[1])\npairs = np.fromfile(sys.argv[2], dtype=np.float32).reshape(-1, 2)\nrecording = pairs[:, 0] + 1j * pairs[:, 1]\nvsa = data[sys.argv[3]]\nstart = max(0, -int(data[sys.argv[4]]))\nfor offset in range(-56, -70, -1):\n    result = demodulate_nr5g(recording, NR5GConfig(n_slots=20, fft_window_offset=offset))\n    python_symbols = result.rx_symbols[start:start + len(vsa)]\n    gain = np.sqrt(np.mean(np.abs(vsa) ** 2) / np.mean(np.abs(python_symbols) ** 2)) * np.exp(1j * np.angle(np.vdot(python_symbols, vsa)))\n    error = 100 * np.sqrt(np.mean(np.abs(vsa / gain - python_symbols) ** 2) / np.mean(np.abs(python_symbols) ** 2))\n    print(offset, _complex_corr(python_symbols, vsa), error, flush=True)",
+				"results/comparison_data.npz",
+				"results/nr5g_waveform.bin",
+				"vsa_symbols",
+				"symbol_offset"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate real VSA FFT alignment",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"compare.py",
+				"--real-vsa",
+				"--fft-window-offset",
+				"-66",
+				"--seed",
+				"7",
+				"--output-dir",
+				"results/fft_window_seed7"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate real VSA correlation controls",
+			"type": "shell",
+			"command": "C:/Users/Peng.Zhou/AppData/Local/Programs/Python/Python311/python.exe",
+			"args": [
+				"-u",
+				"-X",
+				"utf8",
+				"-c",
+				"import sys\nfrom pathlib import Path\nimport matplotlib\nmatplotlib.use(sys.argv[3])\nfrom compare import run_full_comparison\nroot = Path(sys.argv[1])\nroot.mkdir(parents=True, exist_ok=True)\nfor snr in (30.0, 60.0, None):\n    case = sys.argv[2] if snr is None else str(int(snr))\n    run_full_comparison(use_real_vsa=True, snr_db=snr, fft_window_offset=-66, output_dir=str(root / case))",
+				"results/correlation_controls",
+				"no_noise",
+				"Agg"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

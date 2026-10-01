@@ -1,0 +1,22 @@
+Generating 5G NR waveform...
+  Saved 614400 samples → results\nr5g_waveform.bin
+Running Python demodulator...
+  EVM RMS = 2.280%, BER = 0.00e+00
+Running VSA 89600 demodulation...
+VSA status: GapData, Visible; Single sweep - paused
+VSA EVM:  [%rms]
+VSA EVMPk:  [%rms]
+VSA FrequencyError:  [Hz]
+Traceback (most recent call last):
+  File "C:\code\demodulations\compare.py", line 418, in <module>
+    import argparse
+    ^^^^^^^^^^^^^^^^
+  File "C:\code\demodulations\compare.py", line 395, in run_full_comparison
+    )
+     
+  File "C:\code\demodulations\vsa_89600.py", line 327, in run_vsa_demod
+    result = vsa.get_results()
+             ^^^^^^^^^^^^^^^^^
+  File "C:\code\demodulations\vsa_89600.py", line 221, in get_results
+    raise RuntimeError("Missing or invalid VSA measurements: " + ", ".join(invalid))
+RuntimeError: Missing or invalid VSA measurements: EvmRms, EvmPeak, FrequencyError
