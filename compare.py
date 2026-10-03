@@ -297,7 +297,6 @@ def compare_results(py_result: DemodResult, vsa_result: VSAResult,
     peak_text = f"{py_evm_peak:.3f}" if py_evm_peak is not None else "N/A"
     np.savez_compressed(
         out / "comparison_data.npz", is_simulated=vsa_result.is_simulated,
-        vsa_measurement_status=vsa_result.measurement_status,
         python_symbols=py_result.rx_symbols,
         vsa_symbols=vsa_result.symbols_i + 1j * vsa_result.symbols_q,
         vsa_iq_grid=vsa_result.raw_trace_data.get("Constellation", np.array([])),
@@ -319,7 +318,6 @@ def compare_results(py_result: DemodResult, vsa_result: VSAResult,
         ("  SIMULATED: same Python demodulator with synthetic metric offsets.\n"
          "  Not an independent VSA measurement or validation."
          if vsa_result.is_simulated else "  Reference values supplied by external VSA."),
-        f"  VSA acquisition status: {vsa_result.measurement_status or 'not applicable'}",
         f"  Config: μ={cfg.mu}, BW={cfg.bw_mhz}MHz, {cfg.n_rb}RB, {cfg.modulation}",
         f"  Slots: {cfg.n_slots}, SNR: {cfg.snr_db}dB",
         f"  Python FFT window offset: {cfg.fft_window_offset} samples",
@@ -377,10 +375,8 @@ def compare_results(py_result: DemodResult, vsa_result: VSAResult,
     ax.bar(observed_symbols - 0.15, py_result.evm_per_symbol[observed_symbols], width=0.3,
            label="Python", color="steelblue", alpha=0.8)
     if len(vsa_result.evm_per_symbol) == len(observed_symbols):
-        trace_label = (reference_label if vsa_result.is_simulated
-                   else "VSA native RMS trace (data + DMRS)")
         ax.bar(observed_symbols + 0.15, vsa_result.evm_per_symbol,
-               width=0.3, label=trace_label, color="darkorange", alpha=0.8)
+             width=0.3, label=reference_label, color="darkorange", alpha=0.8)
     ax.set_title("EVM vs OFDM Symbol (matched interval)")
     ax.set_xlabel("OFDM Symbol Index"); ax.set_ylabel("EVM (%)")
     ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
