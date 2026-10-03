@@ -11,6 +11,18 @@
 
 # %% 1. Configuration
 # 第 1 步：配置实验。首次学习可手动改为 QPSK、n_slots=1、snr_db=None，观察无噪声恢复。
+import sys
+from pathlib import Path
+
+project_root = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+if not (project_root / "nr5g_waveform.py").is_file():
+    project_root = project_root / "nr5g_demod"
+if not (project_root / "nr5g_waveform.py").is_file():
+    raise FileNotFoundError("Open the nr5g_demod project folder before running this script")
+project_root = project_root.resolve()
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import numpy as np  # NumPy 提供数组、复数、FFT 等运算；np 是常用的简写名称。
 import matplotlib.pyplot as plt  # Matplotlib 的绘图接口；plt 用于创建和显示图形。
 from nr5g_waveform import NR5GConfig, NUMEROLOGY, QAM_MAP  # 导入配置类及参数表；本脚本未直接使用后两个表。
@@ -222,6 +234,8 @@ print(f"Channel est mean |H| = {np.mean(np.abs(h_est)):.4f}")  # 对所有 RE �
 
 # %% 8. Equalisation
 # 第 8 步：均衡器尝试逆转信道影响，而不是直接用发射数据替换接收数据。
+# 一般来说，数据 OFDM 符号离 DMRS 越近，信道估计越新，均衡后相对发射网格的偏差通常越小；离 DMRS 越远，信道变化造成的估计误差可能越大。
+# 注意：本例假设每个时隙内信道不随时间变化，并把同一 DMRS 信道估计用于该时隙的所有符号，因此不会单独体现这种距离趋势。
 from nr5g_demod import equalise_zf  # ZF 是零迫均衡；逐个 RE 计算 X_hat=Y/H_hat。
 
 eq_grid = equalise_zf(rx_grid, h_est)  # 除掉估计增益和相位；H_hat 很小时会放大噪声，这是 ZF 的局限。
@@ -295,17 +309,39 @@ print(f"ZF:   EVM={result_zf.evm_rms:.3f}%, BER={result_zf.ber:.2e}")
 print(f"MMSE: EVM={result.evm_rms:.3f}%, BER={result.ber:.2e}")
 print(f"MMSE advantage: {result_zf.evm_rms - result.evm_rms:.3f}% EVM reduction")
 
-# %% 12. VSA 89600 simulation & comparison
-# 第 12 步：这是模拟 VSA 接口，不会启动仪器，也不是独立测量或独立算法验证。
-from vsa_89600 import simulate_vsa_result  # 内部仍调用相同 Python 解调器，只给部分指标加人为偏移。
-from compare import compare_results, correlate_results, plot_correlation  # 导入报告、相关分析和绘图工具；最后一个未在本脚本直接调用。
+# %% 12. Real VSA 89600 measurement & comparison
+# 第 12 步：调用真实 89600 VSA 软件分析新生成的 10 ms IQ 记录；需要已安装并授权的 5G NR 测量功能，不会退回模拟结果。
+# 此处使用独立生成的 VSA 兼容记录，不使用前面步骤中带 CFO 和多径的 2 ms time_signal。
+import sys
+from datetime import datetime
+from pathlib import Path
 
-vsa_result = simulate_vsa_result(time_signal, cfg)  # 模拟结果的 I/Q 符号来自相同解调器，因此可与 Python 符号完全相同。
-print(f"[VSA sim] EVM RMS: {vsa_result.evm_rms:.3f}%, Peak: {vsa_result.evm_peak:.3f}%")  # 打印的是人工扰动过的模拟指标，不能据此判断仪器误差。
+project_root = Path.cwd()
+if not (project_root / "compare.py").is_file():
+    project_root = project_root / "nr5g_demod"
+if not (project_root / "compare.py").is_file():
+    raise FileNotFoundError("Open the nr5g_demod project folder before running this cell")
+project_root = project_root.resolve()
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from compare import run_full_comparison, correlate_results
+
+vsa_output_dir = project_root / "results" / f"real_vsa_step12_{datetime.now():%Y%m%d_%H%M%S}"
+real_py_result, vsa_result, vsa_report = run_full_comparison(
+    use_real_vsa=True,
+    snr_db=cfg.snr_db,
+    modulation=cfg.modulation,
+    mu=cfg.mu,
+    output_dir=str(vsa_output_dir),
+    seed=cfg.seed,
+    fft_window_offset=cfg.fft_window_offset,
+)
+print(f"Real VSA report: {vsa_report}")
 
 # %% 13. Correlate Python vs VSA 89600
 # 第 13 步：先对齐符号序列，再补偿统一的相位/幅度差，最后统计残差和相关系数。
-corr = correlate_results(result, vsa_result, cfg)  # 对本脚本而言，两侧来自同一解调器；相关接近 1 不代表通过外部 VSA 验证。
+corr = correlate_results(real_py_result, vsa_result, cfg)  # 使用真实 VSA 捕获对应的 Python 结果；cfg 的两个时隙对应 VSA 分析的一个子帧。
 
 print(f"Symbol offset:      {corr.sample_offset}")  # 名字虽叫 sample_offset，这里单位是数据 QAM 符号；正值表示 VSA 序列相对延迟。
 print(f"Phase offset:       {np.degrees(corr.phase_offset_rad):.2f}°")  # 将估计的整体相位偏移从弧度转换成角度。
@@ -315,13 +351,13 @@ print(f"Symbol correlation: {corr.symbol_correlation:.6f}")  # 补偿后的相�
 print(f"EVM of difference:  {corr.evm_of_difference:.3f}%")  # 两个接收结果间的归一化差异，不是各自相对于发射符号的 EVM。
 
 # %% 14. Correlation plots — constellation overlay & error scatter
-# 第 14 步：用三种图观察同一份对齐结果；以下图例的 VSA 在本脚本中均指模拟值。
+# 第 14 步：用三种图观察真实 VSA 与 Python 的对齐结果。
 fig, axes = plt.subplots(1, 3, figsize=(18, 5))  # 左：星座叠加；中：复数差；右：前若干符号的幅度。
 
 ax = axes[0]  # 选择左侧子图；后续 ax 调用都作用于该子图。
 ax.scatter(corr.aligned_py_symbols.real, corr.aligned_py_symbols.imag,  # 只画已经按延迟匹配的 Python 符号。
            s=1, alpha=0.3, c="steelblue", label="Python")  # 蓝色点标识 Python 结果。
-ax.scatter(corr.aligned_vsa_symbols.real, corr.aligned_vsa_symbols.imag,  # 画经整体幅度和相位补偿后的模拟 VSA 符号。
+ax.scatter(corr.aligned_vsa_symbols.real, corr.aligned_vsa_symbols.imag,  # 画经整体幅度和相位补偿后的真实 VSA 符号。
            s=1, alpha=0.3, c="darkorange", label="VSA (aligned)")  # 橙色可能覆盖蓝色；重合本身不说明两套算法独立。
 ax.set_title(f"Constellation Overlay — ρ={corr.symbol_correlation:.4f}")  # 标题只保留四位小数，显示 1.0000 不保证数学上完全相等。
 ax.set_xlabel("I"); ax.set_ylabel("Q")  # 星座的复平面坐标。
@@ -337,7 +373,7 @@ ax.set_aspect("equal"); ax.grid(True, alpha=0.3)  # 等比例显示残差方向�
 ax = axes[2]  # 切换到右侧子图。
 n_show = min(200, len(corr.aligned_py_symbols))  # 最多画 200 个数据符号；min 防止数据不足时越界。
 ax.plot(np.abs(corr.aligned_py_symbols[:n_show]), label="Python", alpha=0.7)  # 查看 Python 符号的幅度随数据索引变化。
-ax.plot(np.abs(corr.aligned_vsa_symbols[:n_show]), label="VSA", alpha=0.7)  # 叠加模拟 VSA 幅度；该图不显示相位差。
+ax.plot(np.abs(corr.aligned_vsa_symbols[:n_show]), label="VSA", alpha=0.7)  # 叠加真实 VSA 幅度；该图不显示相位差。
 ax.set_title("Symbol Magnitude (first 200)")  # 截取短区间便于看清两条曲线是否同步。
 ax.set_xlabel("Symbol Index"); ax.set_ylabel("|symbol|")  # 横轴为扁平化后的数据 QAM 索引，并非 OFDM 符号行号。
 ax.legend(fontsize=8); ax.grid(True, alpha=0.3)  # 标注曲线来源。
@@ -362,13 +398,15 @@ ax.set_xlabel("Subcarrier Index"); ax.set_ylabel("Normalised correlation")  # �
 ax.set_ylim(0, 1.05); ax.grid(True, alpha=0.3)  # 使用 0–1 的相关尺度并显示淡网格。
 plt.tight_layout(); plt.show()  # 显示分组相关图。
 
-# %% 16. Side-by-side comparison (saves to file)
-# 第 16 步：生成文本报告和图片，不调用真实 VSA；重复运行会覆盖 results 中同名输出。
-# 注意：该目录可能已有真实 VSA 报告，运行本单元后，同名文件会被当前模拟结果替换。
-report = compare_results(result, vsa_result, cfg, output_dir="results")  # 返回报告字符串，并保存对比图、相关图、报告及数据文件。
+# %% 16. Real VSA comparison report
+# 第 16 步：显示第 12 步真实 VSA 测量已生成并保存的报告。
+report = vsa_report
+print(report)
 
 # %% 17. Sweep SNR — ZF vs MMSE
 # 第 17 步：扫描 SNR，同时对比 ZF 与 MMSE 均衡器，以及模拟 VSA 的 EVM；这是多次独立调用，不是同一接收机的时间序列。
+from vsa_89600 import simulate_vsa_result
+
 snr_range = [10, 15, 20, 25, 30, 40]  # 待测试的时域采样 SNR，单位 dB，不是 Eb/N0。
 evm_zf_list, evm_mmse_list, evm_vsa_list = [], [], []  # 分别收集 ZF、MMSE 和模拟 VSA 的 EVM。
 

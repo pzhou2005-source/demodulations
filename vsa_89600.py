@@ -1,15 +1,16 @@
-"""Keysight VSA 89600 automation for 5G NR demodulation.
+"""Keysight VSA 89600 automation for 5G NR and BR/EDR EDR payload analysis.
 
 Controls VSA 89600 via its .NET API to:
   1. Load an IQ waveform file (recorded or generated)
   2. Configure 5G NR demodulation
   3. Extract EVM, constellation, and per-subcarrier results
-  4. Return results for comparison with our Python demodulator
+    4. Return NR constellation results or EDR symbol-state results for comparison
 
 Requirements:
   - Keysight 89600 VSA software installed
     - pythonnet for .NET automation
-  - The VSA must be licensed for 5G NR demod (option BHN)
+    - 5G NR demodulation requires option BHN
+    - BR/EDR EDR payload analysis requires Digital Demod option AYA
 """
 
 import numpy as np
@@ -18,11 +19,15 @@ import os
 import sys
 import importlib
 from dataclasses import dataclass
+import tempfile
 from pathlib import Path
 from typing import Optional
 
 
+from wireless_phy import BluetoothEDRConfig
+
 def _pdsch_data_symbols(symbols: np.ndarray, n_sc: int) -> np.ndarray:
+
     if symbols.size == 0 or symbols.size % (14 * n_sc):
         raise ValueError("VSA IQ grid must contain complete 14-symbol slots")
     grid = symbols.reshape(-1, n_sc)
@@ -46,6 +51,14 @@ class VSAResult:
     measurement_status: str = ""
 
 
+@dataclass
+class VSAEDRResult:
+    """Differential symbol-state decisions from VSA Digital Demod."""
+
+    symbol_indices: np.ndarray
+    measurement_status: str
+
+
 class VSA89600:
     """Wrapper around Keysight VSA 89600 .NET automation."""
 
@@ -55,6 +68,7 @@ class VSA89600:
         self._api = None
         self._nr_api = None
         self._original_measurement = None
+        self._software_dir = None
         self._visible = visible
 
     def connect(self):
@@ -73,6 +87,7 @@ class VSA89600:
                 raise RuntimeError("VSA not found; set VSA_INSTALL_DIR to its software directory")
             software = installations[-1]
         interfaces = software / "Interfaces"
+        self._software_dir = software
         for directory in (software, interfaces):
             if str(directory) not in sys.path:
                 sys.path.append(str(directory))
@@ -344,6 +359,84 @@ def run_vsa_demod(iq_filepath: str, sample_rate_hz: float,
         vsa._restart_meas()
         result = vsa.get_results()
         return result
+    finally:
+        vsa.disconnect()
+
+
+def run_vsa_edr_demod(rx_signal: np.ndarray, cfg: BluetoothEDRConfig,
+                      center_freq_hz: float = 2.44e9,
+                      visible: bool = True) -> VSAEDRResult:
+    """Demodulate an aligned EDR payload segment with VSA Digital Demod.
+
+    The input contains one known phase-reference symbol followed by uncoded
+    EDR2M/EDR3M payload symbols. It is not a complete Bluetooth packet.
+    """
+    samples = np.asarray(rx_signal, dtype=complex)
+    expected = (cfg.n_symbols + 1) * cfg.samples_per_symbol
+    if samples.shape != (expected,) or not np.all(np.isfinite(samples)):
+        raise ValueError(f"Expected exactly {expected} finite, aligned IQ samples")
+
+    try:
+        import clr
+    except ImportError as exc:
+        raise RuntimeError("Install pythonnet to use the VSA .NET API") from exc
+    from scipy.io import savemat
+
+    vsa = VSA89600(visible=visible)
+    try:
+        vsa.connect()
+        interfaces = vsa._software_dir / "Interfaces"
+        clr.AddReference(str(interfaces / "Agilent.SA.Vsa.DigitalDemod.Interfaces.dll"))
+        digital_api = importlib.import_module("Agilent.SA.Vsa.DigitalDemod")
+        sample_rate_hz = cfg.sample_rate_hz
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording = Path(temp_dir) / "bluetooth_edr_payload.mat"
+            savemat(recording, {
+                "Y": samples,
+                "XDelta": 1.0 / sample_rate_hz,
+                "XStart": 0.0,
+                "InputCenter": center_freq_hz,
+                "InputZoom": 1,
+            }, oned_as="column")
+            vsa.load_recording(str(recording), sample_rate_hz, center_freq_hz)
+
+            digital = digital_api.MeasurementExtension.CastToExtensionType(
+                vsa.meas.SetMeasurementExtension(
+                    clr.GetClrType(digital_api.MeasurementExtension)))
+            if digital is None:
+                raise RuntimeError("VSA could not create the Digital Demod measurement")
+            digital.Preset(digital_api.Standard.Bluetooth)
+            digital.Format = (digital_api.Format.Pi4DifferentialQpsk
+                              if cfg.phy == "EDR2M"
+                              else digital_api.Format.DifferentialPsk8)
+            digital.SymbolRate = cfg.symbol_rate_hz
+            digital.MeasurementFilter = digital_api.MeasurementFilter.Rectangular
+            digital.ReferenceFilter = digital_api.ReferenceFilter.Rectangular
+            digital.PointsPerSymbol = 1
+            digital.ResultLength = cfg.n_symbols
+            digital.IsPulseSearchEnabled = False
+            digital.IsConstellationSyncSearchEnabled = False
+
+            vsa.meas.IsContinuous = False
+            vsa.meas.PresetTraces()
+            vsa.meas.IsCalculateMeasurementData("Syms/Errs1", True)
+            vsa.meas.Input.Recording.PlayPosition = 0
+            vsa.meas.Restart()
+            vsa.meas.WaitForMeasurementDone(30000)
+            trace = vsa.meas.MeasurementData("Syms/Errs1")
+            if trace is None:
+                raise RuntimeError("VSA returned no Syms/Errs1 EDR result trace")
+            try:
+                state_indices = np.asarray(list(trace.DoubleData), dtype=int)
+            finally:
+                trace.Dispose()
+
+        if state_indices.size == 0 or np.any(
+                (state_indices < 0) | (state_indices >= cfg.phase_order)):
+            raise RuntimeError("VSA returned invalid EDR symbol-state indices")
+        status = f"{vsa.meas.Status.Value}; {vsa.meas.Message}"
+        return VSAEDRResult(state_indices, status)
     finally:
         vsa.disconnect()
 

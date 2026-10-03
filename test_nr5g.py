@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from nr5g_demod import demodulate_nr5g
+from nr5g_demod import channel_estimate_dmrs, demodulate_nr5g
 from nr5g_waveform import NR5GConfig, generate_dmrs, generate_nr5g_waveform
 from nr5g_waveform import _cp_lengths, ofdm_modulate, ofdm_demodulate
 from vsa_89600 import VSA89600, simulate_vsa_result
@@ -36,6 +36,17 @@ def test_dmrs_has_unit_power(slot, cell_id):
     np.testing.assert_allclose(np.abs(dmrs), 1.0, atol=1e-14)
     np.testing.assert_allclose(np.abs(dmrs.real), 1 / np.sqrt(2))
     np.testing.assert_allclose(np.abs(dmrs.imag), 1 / np.sqrt(2))
+
+
+def test_channel_smoothing_preserves_flat_channel_at_subcarrier_edges():
+    cfg = NR5GConfig(n_slots=1)
+    rx_grid = np.zeros((cfg.symbols_per_slot, cfg.n_sc), dtype=complex)
+    dmrs = generate_dmrs(cfg.n_sc, 0, cfg.dmrs_symbol, cfg.cell_id)
+    rx_grid[cfg.dmrs_symbol, 0::2] = dmrs
+
+    h_est = channel_estimate_dmrs(rx_grid, cfg)
+
+    np.testing.assert_allclose(h_est[:, [0, -1]], 1.0, atol=1e-14)
 
 
 @pytest.mark.parametrize("mu", [0, 1, 2, 3])

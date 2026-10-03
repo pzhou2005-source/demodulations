@@ -1,0 +1,11 @@
+reference=VSA 89600
+matched_symbols=16524
+fft_window_offset=0
+seed=42
+snr_db=30
+offset=-16524
+phase_deg=0.0243
+amp_ratio=1.000430
+xcorr_peak=0.999940201535
+symbol_corr=0.999940201535
+evm_diff=1.093603811

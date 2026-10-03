@@ -3,9 +3,10 @@
 Wi-Fi 7 model: EHT symbol timing, 20-320 MHz bandwidth and square QAM through
 4096-QAM. Uses a generic DC-null allocation, comb pilots and one training
 symbol, not IEEE EHT PPDU framing, RU maps, bit labeling, FEC, MIMO or MLO.
-Bluetooth model: uncoded LE 1M/2M GFSK (BT=0.5, modulation index=0.5).
-No preamble/access-address acquisition, whitening, CRC, hopping, LE Coded
-or BR/EDR. Frequency-discriminator outputs are not QAM constellation EVM.
+Bluetooth models: uncoded LE 1M/2M GFSK and payload-only BR/EDR EDR2M/EDR3M
+differential PSK. No complete Bluetooth packet framing, access-code acquisition,
+whitening, CRC, hopping, FEC, LE Coded or BR/EDR base-rate GFSK. LE frequency-
+discriminator outputs are not QAM constellation EVM.
 UWB model: HRP-inspired BPM-BPSK with Gaussian pulses and a training burst.
 No IEEE 802.15.4z framing, spreading codes, time hopping, FEC, STS or ranging.
 UWB EVM refers to the two matched-filter outputs, not a conformance metric.
@@ -261,6 +262,136 @@ def demodulate_bluetooth(rx_signal, cfg: BluetoothConfig, tx_bits=None):
 
 
 @dataclass(frozen=True)
+class BluetoothEDRConfig:
+    """Payload-only BR/EDR EDR differential-PSK teaching model."""
+
+    phy: str = "EDR2M"
+    n_symbols: int = 512
+    samples_per_symbol: int = 8
+    snr_db: Optional[float] = None
+    seed: int = 42
+
+    def __post_init__(self):
+        if self.phy not in ("EDR2M", "EDR3M"):
+            raise ValueError("phy must be 'EDR2M' or 'EDR3M'")
+        _positive_integer("n_symbols", self.n_symbols, minimum=2)
+        _positive_integer("samples_per_symbol", self.samples_per_symbol, minimum=4)
+        _validate_noise(self.snr_db, self.seed)
+
+    @property
+    def symbol_rate_hz(self):
+        return 1e6
+
+    @property
+    def sample_rate_hz(self):
+        return self.symbol_rate_hz * self.samples_per_symbol
+
+    @property
+    def bits_per_symbol(self):
+        return 2 if self.phy == "EDR2M" else 3
+
+    @property
+    def phase_order(self):
+        return 4 if self.phy == "EDR2M" else 8
+
+
+def _bluetooth_edr_phase_maps(cfg: BluetoothEDRConfig):
+    if cfg.phy == "EDR2M":
+        phase_steps = np.array([np.pi / 4, 3 * np.pi / 4,
+                                -np.pi / 4, -3 * np.pi / 4])
+        phase_code_for_symbol = np.arange(4)
+    else:
+        phase_steps = np.arange(8) * np.pi / 4
+        phase_code_for_symbol = np.array([0, 1, 3, 2, 7, 6, 4, 5])
+    symbol_for_phase_code = np.argsort(phase_code_for_symbol)
+    return phase_steps, phase_code_for_symbol, symbol_for_phase_code
+
+
+def bluetooth_edr_bits_from_state_indices(symbol_indices, cfg: BluetoothEDRConfig):
+    """Convert BR/EDR EDR logical symbol-state indices to MSB-first bits."""
+    values = np.asarray(symbol_indices)
+    if values.ndim != 1 or not np.all(np.isfinite(values)):
+        raise ValueError("symbol_indices must be a one-dimensional finite array")
+    if not np.all(values == np.floor(values)):
+        raise ValueError("symbol_indices must contain integers")
+    values = values.astype(int)
+    if np.any((values < 0) | (values >= cfg.phase_order)):
+        raise ValueError("symbol index is outside the configured EDR constellation")
+    weights = 1 << np.arange(cfg.bits_per_symbol - 1, -1, -1)
+    return ((values[:, None] & weights) != 0).astype(np.uint8).ravel()
+
+
+def bluetooth_edr_symbols_from_state_indices(symbol_indices, cfg: BluetoothEDRConfig):
+    """Map logical EDR states to the differential phasors used for correlation."""
+    values = np.asarray(symbol_indices)
+    if values.ndim != 1 or not np.all(np.isfinite(values)):
+        raise ValueError("symbol_indices must be a one-dimensional finite array")
+    if not np.all(values == np.floor(values)):
+        raise ValueError("symbol_indices must contain integers")
+    values = values.astype(int)
+    if np.any((values < 0) | (values >= cfg.phase_order)):
+        raise ValueError("symbol index is outside the configured EDR constellation")
+    phase_steps, phase_code_for_symbol, _ = _bluetooth_edr_phase_maps(cfg)
+    return np.exp(1j * phase_steps[phase_code_for_symbol[values]])
+
+
+def generate_bluetooth_edr_waveform(cfg: BluetoothEDRConfig, tx_bits=None):
+    """Generate an uncoded EDR payload segment with a known phase reference.
+
+    This is not a complete BR/EDR packet: access code, header, guard, whitening,
+    CRC, FEC and the preceding GFSK section are omitted.
+    """
+    rng = np.random.default_rng(cfg.seed)
+    bit_count = cfg.n_symbols * cfg.bits_per_symbol
+    bits = (rng.integers(0, 2, bit_count, dtype=np.uint8) if tx_bits is None
+            else _bits(tx_bits, bit_count))
+    bit_weights = 1 << np.arange(cfg.bits_per_symbol - 1, -1, -1)
+    symbol_indices = bits.reshape(cfg.n_symbols, cfg.bits_per_symbol) @ bit_weights
+    phase_steps, phase_code_for_symbol, _ = _bluetooth_edr_phase_maps(cfg)
+    phase_codes = phase_code_for_symbol[symbol_indices]
+    phase_differences = phase_steps[phase_codes]
+    phase = np.concatenate(([0.0], np.cumsum(phase_differences)))
+    clean = np.repeat(np.exp(1j * phase), cfg.samples_per_symbol)
+    return {
+        "config": cfg,
+        "tx_bits": bits,
+        "tx_symbol_indices": symbol_indices,
+        "phase_code_indices": phase_codes,
+        "tx_symbols": np.exp(1j * phase_differences),
+        "time_signal_clean": clean,
+        "time_signal": _add_awgn(clean, cfg.snr_db, rng),
+    }
+
+
+def demodulate_bluetooth_edr(rx_signal, cfg: BluetoothEDRConfig,
+                            tx_bits=None, tx_symbols=None):
+    """Recover differential EDR payload symbols from an aligned IQ segment."""
+    expected_samples = (cfg.n_symbols + 1) * cfg.samples_per_symbol
+    samples = _samples(rx_signal, expected_samples)
+    symbol_centers = samples[cfg.samples_per_symbol // 2::cfg.samples_per_symbol]
+    training_gain = symbol_centers[0]
+    if np.abs(training_gain) < 1e-12:
+        raise ValueError("EDR phase-reference symbol has zero or unusable gain")
+    normalized = symbol_centers / training_gain
+    phase_differences = np.angle(normalized[1:] * np.conj(normalized[:-1]))
+    phase_steps, _, symbol_for_phase_code = _bluetooth_edr_phase_maps(cfg)
+    phase_error = np.angle(np.exp(1j * (phase_differences[:, None] - phase_steps[None, :])))
+    phase_codes = np.argmin(np.abs(phase_error), axis=1)
+    symbol_indices = symbol_for_phase_code[phase_codes]
+    bits = bluetooth_edr_bits_from_state_indices(symbol_indices, cfg)
+    result = WirelessResult(
+        bits,
+        np.exp(1j * phase_differences),
+        cfg.sample_rate_hz,
+        diagnostics={"phase_difference_rad": phase_differences,
+                     "phase_code_indices": phase_codes,
+                     "symbol_indices": symbol_indices,
+                     "training_gain": training_gain},
+    )
+    return _measure_result(result, tx_bits, tx_symbols)
+
+
+@dataclass(frozen=True)
 class UWBConfig:
     """Aligned BPM-BPSK burst model, not an IEEE 802.15.4z packet generator."""
 
@@ -359,6 +490,8 @@ def plot_wireless_result(waveform, result: WirelessResult):
         label = f"Wi-Fi 7-inspired OFDM, {cfg.bandwidth_mhz} MHz, {cfg.modulation}"
     elif isinstance(cfg, BluetoothConfig):
         label = f"Bluetooth {cfg.phy} GFSK"
+    elif isinstance(cfg, BluetoothEDRConfig):
+        label = f"Bluetooth BR/EDR {cfg.phy} differential PSK payload"
     elif isinstance(cfg, UWBConfig):
         label = "UWB BPM-BPSK pulse model"
     else:
@@ -403,6 +536,10 @@ def plot_wireless_result(waveform, result: WirelessResult):
             symbols = result.rx_symbols[:10000]
             axes[1, 0].scatter(symbols.real, symbols.imag, s=3, alpha=0.5)
             axes[1, 0].set(title="Equalized QAM constellation", xlabel="I", ylabel="Q")
+        elif isinstance(cfg, BluetoothEDRConfig):
+            symbols = result.rx_symbols[:10000]
+            axes[1, 0].scatter(symbols.real, symbols.imag, s=8, alpha=0.6)
+            axes[1, 0].set(title="Differential EDR symbol phasors", xlabel="I", ylabel="Q")
         else:
             axes[1, 0].scatter(result.diagnostics["early"].real,
                                result.diagnostics["late"].real, s=12, alpha=0.6)

@@ -3,6 +3,8 @@ import pytest
 
 from wireless_phy import WiFi7Config, generate_wifi7_waveform, demodulate_wifi7
 from wireless_phy import BluetoothConfig, generate_bluetooth_waveform, demodulate_bluetooth
+from wireless_phy import BluetoothEDRConfig, generate_bluetooth_edr_waveform, demodulate_bluetooth_edr
+from wireless_phy import bluetooth_edr_bits_from_state_indices, bluetooth_edr_symbols_from_state_indices
 from wireless_phy import UWBConfig, generate_uwb_waveform, demodulate_uwb
 from wireless_phy import plot_wireless_result
 
@@ -129,6 +131,45 @@ def test_bluetooth_rejects_invalid_configuration(kwargs):
 def test_bluetooth_rejects_nonbinary_payload():
     with pytest.raises(ValueError, match="binary bits"):
         generate_bluetooth_waveform(BluetoothConfig(n_bits=3), [0, 1, 2])
+
+
+@pytest.mark.parametrize("phy", ["EDR2M", "EDR3M"])
+def test_bluetooth_edr_noiseless_roundtrip(phy):
+    cfg = BluetoothEDRConfig(phy=phy, n_symbols=64)
+    waveform = generate_bluetooth_edr_waveform(cfg)
+    result = demodulate_bluetooth_edr(
+        waveform["time_signal"], cfg, waveform["tx_bits"], waveform["tx_symbols"])
+
+    np.testing.assert_array_equal(result.rx_bits, waveform["tx_bits"])
+    np.testing.assert_array_equal(result.diagnostics["symbol_indices"],
+                                  waveform["tx_symbol_indices"])
+    assert result.ber == 0.0
+    assert result.evm_rms < 1e-10
+
+
+@pytest.mark.parametrize("phy", ["EDR2M", "EDR3M"])
+def test_bluetooth_edr_tolerates_constant_complex_gain(phy):
+    cfg = BluetoothEDRConfig(phy=phy, n_symbols=64, snr_db=None)
+    waveform = generate_bluetooth_edr_waveform(cfg)
+    received = waveform["time_signal"] * 0.6 * np.exp(1.1j)
+    result = demodulate_bluetooth_edr(received, cfg, waveform["tx_bits"],
+                                      waveform["tx_symbols"])
+
+    np.testing.assert_array_equal(result.rx_bits, waveform["tx_bits"])
+    assert result.ber == 0.0
+    assert result.evm_rms < 1e-10
+
+
+@pytest.mark.parametrize("phy", ["EDR2M", "EDR3M"])
+def test_bluetooth_edr_vsa_state_conversion_roundtrip(phy):
+    cfg = BluetoothEDRConfig(phy=phy, n_symbols=4 if phy == "EDR2M" else 8)
+    state_indices = np.arange(cfg.phase_order)
+    bits = bluetooth_edr_bits_from_state_indices(state_indices, cfg)
+    symbols = bluetooth_edr_symbols_from_state_indices(state_indices, cfg)
+    waveform = generate_bluetooth_edr_waveform(cfg, bits)
+
+    np.testing.assert_array_equal(waveform["tx_symbol_indices"], state_indices)
+    np.testing.assert_allclose(waveform["tx_symbols"], symbols, atol=1e-14)
 
 
 def test_uwb_all_position_and_polarity_combinations():

@@ -104,7 +104,10 @@ def channel_estimate_dmrs(rx_grid: np.ndarray, cfg: NR5GConfig,
         # frequency-domain moving-average smoothing
         if smoothing_taps > 1:
             kernel = np.ones(smoothing_taps) / smoothing_taps
-            h_full = np.convolve(h_full, kernel, mode="same")
+            pad_left = (smoothing_taps - 1) // 2
+            pad_right = smoothing_taps // 2
+            padded = np.pad(h_full, (pad_left, pad_right), mode="edge")
+            h_full = np.convolve(padded, kernel, mode="valid")
 
         sym_start = slot * cfg.symbols_per_slot
         sym_end = sym_start + cfg.symbols_per_slot

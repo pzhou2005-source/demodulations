@@ -14,6 +14,7 @@ Select the workspace `.venv` kernel in Jupyter; SciPy is installed there.
 | --- | --- | --- |
 | Wi-Fi 7-inspired OFDM | `WiFi7Config` | `generate_wifi7_waveform` / `demodulate_wifi7` |
 | Bluetooth LE GFSK | `BluetoothConfig` | `generate_bluetooth_waveform` / `demodulate_bluetooth` |
+| Bluetooth BR/EDR EDR payload | `BluetoothEDRConfig` | `generate_bluetooth_edr_waveform` / `demodulate_bluetooth_edr` |
 | UWB BPM-BPSK pulses | `UWBConfig` | `generate_uwb_waveform` / `demodulate_uwb` |
 
 All functions are in `wireless_phy.py`. Generators accept an optional binary
@@ -45,6 +46,11 @@ print(result.ber, result.evm_rms)
   Does not implement packet acquisition, whitening, CRC, hopping, LE Coded,
   or BR/EDR. BER and frequency-discriminator outputs are available;
   `evm_rms` is intentionally `None`, not a fabricated QAM EVM value.
+- **Bluetooth BR/EDR EDR:** payload-only EDR2M pi/4-DQPSK and EDR3M 8-DPSK
+  segments with a known phase-reference symbol. They omit the preceding GFSK
+  section, access code, packet header, guard, whitening, CRC, and FEC. The 89600
+  correlation uses its generic Digital Demod `Syms/Errs1` state trace; `GapData`
+  status is retained rather than treated as a clean acquisition.
 - **UWB:** early/late burst position plus positive/negative polarity,
   Gaussian chip pulses, and a known training burst for coherent matched
   filtering. Default chip rate is 499.2 MHz. EVM measures the soft early/late
@@ -56,8 +62,9 @@ print(result.ber, result.evm_rms)
   Wi-Fi and UWB estimate gain from training rather than from known payloads.
 - SNR is average time-domain sample SNR, not Eb/N0; SNR numbers and EVM
   definitions are not directly comparable between these different models.
-- No VSA hardware comparison is provided for these new protocols. A passing
-  self-test establishes model consistency, not standards interoperability.
+- Real 89600 Digital Demod comparison is available only for the payload-only
+  BR/EDR EDR model through the generic Digital Demod option. Wi-Fi, UWB, and LE
+  have no VSA adapter here; these teaching models are not conformance tests.
 
 ## Validation
 
