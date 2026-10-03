@@ -22,6 +22,9 @@ cfg = NR5GConfig(  # 创建配置对象；后续用 cfg.属性名 读取参数�
     modulation="64QAM",  # 64 个星座点；每个数据 QAM 符号携带 log2(64)=6 个比特。
     n_slots=2,  # 生成两个时隙；正常循环前缀下，每个时隙有 14 个 OFDM 符号。
     snr_db=30,  # 按时域平均采样功率添加 30 dB AWGN；None 表示不加噪声，不是 0 dB。
+    cfo_hz=150.0,        # 残余载波频偏（Hz），由完整接收链估计并校正。
+    channel_taps=[1.0, 0.3 + 0.1j, 0.05],  # 3 径多径信道的复数系数。
+    channel_delays=[0, 3, 7],  # 各径相对主径的采样点延迟。
     seed=42,  # 固定随机种子，便于在相同配置下复现数据和噪声。
 )  # 未显式指定的参数使用类的默认值，例如 n_fft=2048、sample_rate_mhz=61.44。
 
@@ -29,6 +32,7 @@ print(f"Numerology μ={cfg.mu}: SCS={cfg.scs_khz} kHz, {cfg.symbols_per_slot} sy
 print(f"Subcarriers: {cfg.n_sc}  ({cfg.n_rb} RB × 12)")  # n_sc 是按 RB 数量计算出的有效子载波数。
 print(f"FFT size: {cfg.n_fft}, Sample rate: {cfg.sample_rate_mhz} MHz")  # FFT 包含有效载波和空载波；本配置 Fs/NFFT=30 kHz。
 print(f"Modulation: {cfg.modulation} ({cfg.bits_per_symbol} bits/sym)")  # 此处 bits/sym 指每个 QAM 符号的比特数。
+print(f"CFO: {cfg.cfo_hz} Hz, Channel: {len(cfg.channel_taps)}-tap multipath")  # 本轮额外注入的频偏和多径损伤参数。
 
 # %% 2. Generate 5G NR waveform
 # 第 2 步：构建发射信号。先理解返回的字典，再进入函数研究内部实现。
@@ -229,17 +233,22 @@ ax.set_title("Equalisation Error (|eq - tx| per RE)")  # 这是线性绝对误�
 ax.set_xlabel("Subcarrier"); ax.set_ylabel("OFDM Symbol")  # 定位误差发生在哪个子载波、哪个 OFDM 符号。
 plt.colorbar(ax.images[0], ax=ax); plt.tight_layout(); plt.show()  # 为热力图添加数值色条，整理布局并显示。
 
-# %% 9. Full demodulation pipeline
-# 第 9 步：调用完整接收链，把第 6–8 步及数据抽取、判决、误差统计统一执行。
+# %% 9. Full demodulation pipeline (MMSE + CFO correction)
+# 第 9 步：调用完整接收链，含 CFO 估计/校正和 MMSE 均衡，把第 6–8 步及数据抽取、判决、误差统计统一执行。
 from nr5g_demod import demodulate_nr5g  # 返回 DemodResult 对象，使用 result.属性名 获取结果。
 
-result = demodulate_nr5g(  # 完整解调函数会重新执行 FFT 和均衡，并非直接读取上面的 eq_grid。
+result = demodulate_nr5g(  # 完整解调函数会重新执行 CFO 校正、FFT 和均衡，并非直接读取上面的 eq_grid。
     time_signal, cfg,  # 输入完整 IQ 采样数组及接收参数；假定记录起点与时隙已对齐。
     tx_bits=tx["tx_bits"],  # 发射比特仅用于计算 BER，不参与接收比特判决。
     tx_symbols=tx["tx_symbols"],  # 理想数据符号用于计算 EVM，不用于强行校正接收数据。
+    tx_grid=tx["resource_grid"],  # 原始发射网格，用于按子载波统计 EVM。
     data_positions=tx["data_positions"],  # 数据 RE 位置：跳过 DMRS，在导频符号行只提取奇数列数据。
+    equaliser="mmse",  # MMSE 均衡在估计噪声功率后比 ZF 更能抑制噪声放大。
+    cfo_correct=True,  # 先估计并校正残余载波频偏，再做 OFDM 解调。
 )  # 返回的 rx_symbols 是均衡后的软符号；rx_bits 是按最近星座点得到的硬判决比特。
 
+print(f"CFO estimate:  {result.cfo_est_hz:.1f} Hz  (true: {cfg.cfo_hz} Hz)")  # 与配置中注入的真实频偏对比，验证估计精度。
+print(f"Noise var est: {result.noise_var_est:.2e}")  # MMSE 均衡所用的噪声方差估计。
 print(f"EVM RMS:       {result.evm_rms:.3f}%")  # EVM=100×sqrt(mean(|RX-TX|²)/mean(|TX|²))；越小越接近参考。
 print(f"BER:           {result.ber:.2e}")  # BER=错误比特数/比较比特数；:.2e 使用科学计数法，0 BER 不代表 EVM 必须为 0。
 print(f"RX symbols:    {len(result.rx_symbols)}")  # 这里只统计数据 QAM 符号，不包括 DMRS 或时域 CP 采样点。
@@ -265,6 +274,26 @@ ax.set_title("EVM per OFDM Symbol")  # 这里的 Symbol 是 OFDM 符号，不是
 ax.set_xlabel("OFDM Symbol Index"); ax.set_ylabel("EVM (%)")  # 横轴为 OFDM 符号索引，纵轴为百分比误差。
 ax.legend(); ax.grid(True, alpha=0.3)  # 显示红色参考线的含义和淡网格。
 plt.tight_layout(); plt.show()  # 显示按符号统计的误差。
+
+# %% 11b. EVM per subcarrier
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.plot(result.evm_per_subcarrier, linewidth=0.8, color="steelblue")
+ax.axhline(result.evm_rms, color="red", linestyle="--", label=f"RMS = {result.evm_rms:.2f}%")
+ax.set_title("EVM per Subcarrier")
+ax.set_xlabel("Subcarrier Index"); ax.set_ylabel("EVM (%)")
+ax.legend(); ax.grid(True, alpha=0.3)
+plt.tight_layout(); plt.show()
+
+# %% 11c. ZF vs MMSE comparison
+result_zf = demodulate_nr5g(
+    time_signal, cfg,
+    tx_bits=tx["tx_bits"], tx_symbols=tx["tx_symbols"],
+    tx_grid=tx["resource_grid"], data_positions=tx["data_positions"],
+    equaliser="zf", cfo_correct=True,
+)
+print(f"ZF:   EVM={result_zf.evm_rms:.3f}%, BER={result_zf.ber:.2e}")
+print(f"MMSE: EVM={result.evm_rms:.3f}%, BER={result.ber:.2e}")
+print(f"MMSE advantage: {result_zf.evm_rms - result.evm_rms:.3f}% EVM reduction")
 
 # %% 12. VSA 89600 simulation & comparison
 # 第 12 步：这是模拟 VSA 接口，不会启动仪器，也不是独立测量或独立算法验证。
@@ -338,41 +367,50 @@ plt.tight_layout(); plt.show()  # 显示分组相关图。
 # 注意：该目录可能已有真实 VSA 报告，运行本单元后，同名文件会被当前模拟结果替换。
 report = compare_results(result, vsa_result, cfg, output_dir="results")  # 返回报告字符串，并保存对比图、相关图、报告及数据文件。
 
-# %% 17. Sweep SNR
-# 第 17 步：扫描 SNR，观察噪声对解调的影响；这是多次独立调用，不是同一接收机的时间序列。
+# %% 17. Sweep SNR — ZF vs MMSE
+# 第 17 步：扫描 SNR，同时对比 ZF 与 MMSE 均衡器，以及模拟 VSA 的 EVM；这是多次独立调用，不是同一接收机的时间序列。
 snr_range = [10, 15, 20, 25, 30, 40]  # 待测试的时域采样 SNR，单位 dB，不是 Eb/N0。
-evm_py = []  # 空列表，用于收集每个 SNR 下的 Python EVM。
-evm_vsa = []  # 保存模拟 VSA 的 EVM；其人为偏移会造成高 SNR 下的假“误差平台”。
+evm_zf_list, evm_mmse_list, evm_vsa_list = [], [], []  # 分别收集 ZF、MMSE 和模拟 VSA 的 EVM。
 
 for snr in snr_range:  # 逐个取出 SNR；缩进的语句都会重复执行。
     c = NR5GConfig(mu=1, bw_mhz=20, n_rb=51, modulation="64QAM",  # c 是本次扫描的独立配置，不会修改前面的 cfg。
-                   n_slots=2, snr_db=snr, seed=42)  # 保持调制和种子不变，仅改变噪声强度，便于公平比较。
+                   n_slots=2, snr_db=snr, cfo_hz=150, seed=42,  # 保持调制、频偏和种子不变，仅改变噪声强度，便于公平比较。
+                   channel_taps=[1.0, 0.3 + 0.1j, 0.05], channel_delays=[0, 3, 7])  # 同样注入 3 径多径信道。
     t = generate_nr5g_waveform(c)  # t 与 tx 一样是字典，但对应当前 SNR 的波形。
-    r = demodulate_nr5g(t["time_signal"], c,  # r 是本次接收结果对象。
-                        tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],  # 提供参考用于统计 BER/EVM。
-                        data_positions=t["data_positions"])  # 按相同的数据/导频布局提取数据。
+    r_zf = demodulate_nr5g(t["time_signal"], c,  # 用 ZF 均衡解调同一条波形。
+                           tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
+                           tx_grid=t["resource_grid"], data_positions=t["data_positions"],
+                           equaliser="zf")
+    r_mmse = demodulate_nr5g(t["time_signal"], c,  # 用 MMSE 均衡解调同一条波形，便于直接比较。
+                             tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],
+                             tx_grid=t["resource_grid"], data_positions=t["data_positions"],
+                             equaliser="mmse")
     v = simulate_vsa_result(t["time_signal"], c)  # 使用同一条波形生成模拟对照，不是另一台仪器的测量。
-    evm_py.append(r.evm_rms)  # append 把一个标量追加到列表末尾，顺序与 snr_range 一致。
-    evm_vsa.append(v.evm_rms)  # 保存模拟指标，便于与 Python 曲线同图显示。
-    print(f"SNR={snr:3d} dB → Python EVM={r.evm_rms:.3f}%, VSA EVM={v.evm_rms:.3f}%")  # :3d 让整数占三列，便于对齐输出。
+    evm_zf_list.append(r_zf.evm_rms)  # append 把一个标量追加到列表末尾，顺序与 snr_range 一致。
+    evm_mmse_list.append(r_mmse.evm_rms)
+    evm_vsa_list.append(v.evm_rms)  # 保存模拟指标，便于与 Python 曲线同图显示。
+    print(f"SNR={snr:3d} dB → ZF={r_zf.evm_rms:.3f}%, MMSE={r_mmse.evm_rms:.3f}%, VSA={v.evm_rms:.3f}%")  # :3d 让整数占三列，便于对齐输出。
 
 fig, ax = plt.subplots(figsize=(8, 5))  # 创建 SNR 扫描图。
-ax.semilogy(snr_range, evm_py, "o-", label="Python demod")  # semilogy 只让纵轴取对数；o- 表示圆点加实线。
-ax.semilogy(snr_range, evm_vsa, "s--", label="VSA 89600 (sim)")  # s-- 表示方点加虚线；这是模拟对照曲线。
+ax.semilogy(snr_range, evm_zf_list, "^--", label="Python ZF")  # ^-- 表示三角点加虚线。
+ax.semilogy(snr_range, evm_mmse_list, "o-", label="Python MMSE")  # o- 表示圆点加实线。
+ax.semilogy(snr_range, evm_vsa_list, "s:", label="VSA 89600 (sim)")  # s: 表示方点加点线；这是模拟对照曲线。
 ax.set_xlabel("SNR (dB)"); ax.set_ylabel("EVM RMS (%)")  # SNR 越高表示相对噪声越小；EVM 通常随之下降。
-ax.set_title("EVM vs SNR — Python vs VSA"); ax.legend(); ax.grid(True, which="both", alpha=0.3)  # both 显示对数轴的主、次网格。
+ax.set_title("EVM vs SNR — ZF vs MMSE vs VSA"); ax.legend(); ax.grid(True, which="both", alpha=0.3)  # both 显示对数轴的主、次网格。
 plt.tight_layout(); plt.show()  # 高 SNR 区，噪声主导的 EVM 通常每增加 10 dB 约下降到原来的 1/sqrt(10)。
 
 # %% 18. Sweep modulation order
-# 第 18 步：固定 30 dB SNR，比较不同星座阶数；阶数越高，单位平均功率下点间距越小。
+# 第 18 步：固定 30 dB SNR、150 Hz 频偏和多径信道，比较不同星座阶数；阶数越高，单位平均功率下点间距越小。
 for mod in ["QPSK", "16QAM", "64QAM", "256QAM"]:  # 四种调制每个数据符号分别承载 2、4、6、8 比特。
     c = NR5GConfig(mu=1, bw_mhz=20, n_rb=51, modulation=mod,  # 本轮仅选择不同的调制阶数。
-                   n_slots=2, snr_db=30, seed=42)  # 固定参数便于比较，但不同阶数消耗的随机比特数不同，噪声 realization 不保证相同。
+                   n_slots=2, snr_db=30, cfo_hz=150, seed=42,  # 固定参数便于比较，但不同阶数消耗的随机比特数不同，噪声 realization 不保证相同。
+                   channel_taps=[1.0, 0.3 + 0.1j, 0.05], channel_delays=[0, 3, 7])
     t = generate_nr5g_waveform(c)  # 根据新的每符号比特数生成数据、资源网格和 IQ。
     r = demodulate_nr5g(t["time_signal"], c,  # 接收机必须使用对应的调制配置进行星座判决。
                         tx_bits=t["tx_bits"], tx_symbols=t["tx_symbols"],  # 本轮发射参考不能使用上一轮的参考。
-                        data_positions=t["data_positions"])  # 保持数据 RE 顺序与发射端一致。
-    print(f"{mod:>6s}: EVM={r.evm_rms:.3f}%, BER={r.ber:.1e}")  # >6s 表示字符串右对齐；相近 EVM 下，高阶调制仍可能有更多误码。
+                        tx_grid=t["resource_grid"], data_positions=t["data_positions"],  # 保持数据 RE 顺序与发射端一致。
+                        equaliser="mmse")  # 继续使用 MMSE 均衡。
+    print(f"{mod:>6s}: EVM={r.evm_rms:.3f}%, BER={r.ber:.1e}, CFO_est={r.cfo_est_hz:.1f}Hz")  # >6s 表示字符串右对齐；相近 EVM 下，高阶调制仍可能有更多误码。
 
 # %% 19. Wi-Fi 7-inspired OFDM simulation (not an EHT packet)
 # 第 19 步：Wi-Fi 7 风格的未编码 OFDM 教学模型，不是可直接与商用设备互通的 EHT 数据包。
